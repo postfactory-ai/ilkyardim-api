@@ -1,0 +1,41 @@
+
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <h3 class="fw-bold mb-4">
+        <i class="ph-duotone ph-magnifying-glass text-danger"></i> 
+        "{{ kelime }}" için Arama Sonuçları
+    </h3>
+
+    {% if sonuclar %}
+        <div class="row g-3">
+            {% for konu in sonuclar %}
+            <div class="col-md-6">
+                <a href="{{ url_for('konu_detay', id=konu.id) }}" class="text-decoration-none text-dark">
+                    <div class="card border-0 shadow-sm h-100 p-3">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="bg-light rounded-circle p-3">
+                                <i class="ph-duotone ph-first-aid text-danger fs-4"></i>
+                            </div>
+                            <div>
+                                <h5 class="fw-bold m-0">{{ konu.baslik }}</h5>
+                                <small class="text-muted">MODÜL {{ konu.sira }}</small>
+                            </div>
+                            <i class="ph-bold ph-caret-right ms-auto text-muted"></i>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="alert alert-warning text-center p-5 rounded-4">
+            <i class="ph-duotone ph-warning-circle fs-1 mb-3"></i>
+            <h4>Sonuç Bulunamadı</h4>
+            <p>Farklı bir anahtar kelime deneyin (Örn: Yanık, Kırık, Kalp).</p>
+            <a href="/" class="btn btn-outline-dark mt-2">Ana Sayfaya Dön</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

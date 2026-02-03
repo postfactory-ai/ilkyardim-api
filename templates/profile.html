@@ -1,0 +1,48 @@
+
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="bg-light rounded-circle p-3">
+            <i class="ph-duotone ph-user" style="font-size: 2rem;"></i>
+        </div>
+        <div>
+            <h3 class="fw-bold m-0">{{ user.username }}</h3>
+            <span class="text-muted">Üye</span>
+        </div>
+        <a href="/cikis" class="btn btn-sm btn-outline-danger ms-auto">Çıkış</a>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="fw-bold"><i class="ph-duotone ph-phone-plus text-danger"></i> Acil Durum Kişileri</h5>
+            <p class="small text-muted">SOS butonuna basınca bu kişilere mesaj atılacak (Yakında).</p>
+            <form method="POST">
+                <div class="mb-2">
+                    <input type="text" name="no1" class="form-control" placeholder="1. Kişi (Anne, Baba...)" value="{{ user.acil_no_1 or '' }}">
+                </div>
+                <div class="mb-2">
+                    <input type="text" name="no2" class="form-control" placeholder="2. Kişi (Eş, Kardeş...)" value="{{ user.acil_no_2 or '' }}">
+                </div>
+                <button class="btn btn-primary btn-sm w-100">Kaydet</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h5 class="fw-bold">İstatistikler</h5>
+            <div class="d-flex justify-content-between mt-3">
+                <div class="text-center">
+                    <h4 class="fw-bold m-0">0</h4>
+                    <small>Tamamlanan</small>
+                </div>
+                <div class="text-center">
+                    <h4 class="fw-bold m-0">0</h4>
+                    <small>Quiz Puanı</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

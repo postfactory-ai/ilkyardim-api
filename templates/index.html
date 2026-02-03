@@ -1,0 +1,161 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+{% set svg_map = {
+    "GENEL": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><path d="M50 15C50 15 85 25 85 50C85 75 50 90 50 90C50 90 15 75 15 50C15 25 50 15 50 15Z" fill="url(#grad_shield)" filter="url(#glow)"/><path d="M35 50H65M50 35V65" stroke="white" stroke-width="8" stroke-linecap="round"/><defs><linearGradient id="grad_shield" x1="15" y1="15" x2="85" y2="90"><stop stop-color="#4facfe"/><stop offset="1" stop-color="#00f2fe"/></linearGradient></defs></svg>',
+    "VÜCUT": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M50 25C50 25 35 35 35 55C35 75 45 85 50 85C55 85 65 75 65 55C65 35 50 25 50 25Z" fill="url(#grad_body)"/><circle cx="50" cy="40" r="5" fill="white" opacity="0.8"/><defs><linearGradient id="grad_body" x1="0" y1="0" x2="100" y2="100"><stop stop-color="#43e97b"/><stop offset="1" stop-color="#38f9d7"/></linearGradient></defs></svg>',
+    "TAŞIMA": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="35" stroke="url(#grad_transport)" stroke-width="8" stroke-dasharray="160" stroke-linecap="round"/><path d="M50 30V50L65 65" stroke="#FF512F" stroke-width="6" stroke-linecap="round"/><defs><linearGradient id="grad_transport" x1="0" y1="0" x2="100" y2="100"><stop stop-color="#FF512F"/><stop offset="1" stop-color="#DD2476"/></linearGradient></defs></svg>',
+    "OED": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M50 10L20 50H45L40 90L70 50H45L50 10Z" fill="url(#grad_oed)" filter="url(#glow)"/><defs><linearGradient id="grad_oed" x1="20" y1="10" x2="70" y2="90"><stop stop-color="#f093fb"/><stop offset="1" stop-color="#f5576c"/></linearGradient></defs></svg>',
+    "YAŞAM": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 50H35L45 20L55 80L65 50H80" stroke="url(#grad_life)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="grad_life" x1="0" y1="0" x2="100" y2="0"><stop stop-color="#ff9a9e"/><stop offset="1" stop-color="#fecfef"/></linearGradient></defs></svg>',
+    "HAVA": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M50 20V50" stroke="#a18cd1" stroke-width="12" stroke-linecap="round"/><path d="M30 60C30 75 40 85 50 85C60 85 70 75 70 60" stroke="#fbc2eb" stroke-width="12" stroke-linecap="round"/><circle cx="50" cy="20" r="8" fill="#a18cd1"/></svg>',
+    "BİLİNÇ": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M25 50C25 35 35 25 50 25C65 25 75 35 75 50" stroke="url(#grad_brain)" stroke-width="6" stroke-linecap="round"/><circle cx="50" cy="50" r="10" fill="url(#grad_brain)"/><defs><linearGradient id="grad_brain" x1="0" y1="0" x2="100" y2="100"><stop stop-color="#89f7fe"/><stop offset="1" stop-color="#66a6ff"/></linearGradient></defs></svg>',
+    "KANAMA": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M50 20C50 20 80 50 80 65C80 82 66 95 50 95C34 95 20 82 20 65C20 50 50 20 50 20Z" fill="url(#grad_blood)" filter="url(#glow)"/><defs><linearGradient id="grad_blood" x1="50" y1="20" x2="50" y2="95"><stop stop-color="#ff0844"/><stop offset="1" stop-color="#ffb199"/></linearGradient></defs></svg>',
+    "ŞOK": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M55 10L30 45H50L45 90L70 55H50L55 10Z" fill="url(#grad_shock)" stroke="white" stroke-width="2"/><defs><linearGradient id="grad_shock" x1="30" y1="10" x2="70" y2="90"><stop stop-color="#a18cd1"/><stop offset="1" stop-color="#fbc2eb"/></linearGradient></defs></svg>',
+    "YARALANMA": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="35" width="60" height="30" rx="8" fill="#ff9a9e" transform="rotate(-10 50 50)"/><rect x="40" y="35" width="20" height="30" fill="white" opacity="0.5" transform="rotate(-10 50 50)"/><circle cx="30" cy="50" r="2" fill="#d64c4c"/><circle cx="70" cy="42" r="2" fill="#d64c4c"/></svg>',
+    "BOĞULMA": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="35" stroke="#4facfe" stroke-width="15"/><path d="M50 15V25M50 75V85M15 50H25M75 50H85" stroke="#f093fb" stroke-width="4"/></svg>',
+    "KIRIK": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20 30C15 30 15 40 20 40H35L25 60H20C15 60 15 70 20 70H35C40 70 40 60 35 60L45 40H60C65 40 65 30 60 30H20Z" fill="white" stroke="#a18cd1" stroke-width="3"/><path d="M40 40L30 60" stroke="#FF512F" stroke-width="2"/></svg>',
+    "HAYVAN": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30 30C30 30 40 20 50 20C60 20 70 30 70 30" stroke="#0ba360" stroke-width="5" stroke-linecap="round"/><path d="M40 40L35 60M60 40L65 60" stroke="#0ba360" stroke-width="4" stroke-linecap="round"/></svg>',
+    "ZEHİRLENME": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M40 30H60L70 80H30L40 30Z" fill="url(#grad_poison)"/><rect x="45" y="15" width="10" height="15" fill="#333"/><defs><linearGradient id="grad_poison" x1="0" y1="0" x2="0" y2="100"><stop stop-color="#434343"/><stop offset="1" stop-color="#000000"/></linearGradient></defs></svg>',
+    "YANIK": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M50 15C50 15 75 45 75 65C75 80 65 90 50 90C35 90 25 80 25 65C25 45 50 15 50 15Z" fill="url(#grad_fire)"/><defs><linearGradient id="grad_fire" x1="50" y1="90" x2="50" y2="15"><stop stop-color="#fa709a"/><stop offset="1" stop-color="#fee140"/></linearGradient></defs></svg>',
+    "GÖZ": '<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 50C15 50 30 25 50 25C70 25 85 50 85 50C85 50 70 75 50 75C30 75 15 50 15 50Z" fill="white" stroke="#66a6ff" stroke-width="3"/><circle cx="50" cy="50" r="15" fill="#66a6ff"/><circle cx="50" cy="50" r="6" fill="#000"/></svg>'
+} %}
+
+<style>
+    .header-area {
+        padding: 40px 20px 30px 20px;
+        background: white;
+        border-bottom-left-radius: 30px;
+        border-bottom-right-radius: 30px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.03);
+    }
+    .user-greet { font-size: 0.9rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    .main-slogan { font-size: 1.8rem; font-weight: 800; color: #1e293b; line-height: 1.2; margin-top: 5px; }
+    
+    /* ACTIONS */
+    .actions-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: -30px; padding: 0 20px; position: relative; z-index: 10; }
+    .act-btn {
+        background: white; border-radius: 20px; padding: 15px 5px;
+        display: flex; flex-direction: column; align-items: center;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.05); text-decoration: none;
+        transition: 0.2s; border: 1px solid white;
+    }
+    .act-btn:active { transform: scale(0.95); }
+    .act-icon { font-size: 1.8rem; margin-bottom: 5px; }
+    .act-label { font-size: 0.7rem; font-weight: 800; color: #64748b; }
+    
+    /* Renk Kodları */
+    .act-call { color: #ef4444; } /* Kırmızı */
+    .act-sos { color: #f97316; } /* Turuncu */
+    .act-quiz { color: #3b82f6; } /* Mavi */
+    .act-map { color: #22c55e; } /* Yeşil */
+
+    /* KONU KARTLARI */
+    .topic-card {
+        background: white; border-radius: 24px; padding: 25px;
+        position: relative; overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.02);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        text-decoration: none; color: inherit; height: 100%;
+        display: flex; flex-direction: column; align-items: center; text-align: center;
+        border: 1px solid #f8fafc;
+    }
+    .topic-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(211, 47, 47, 0.1); border-color: #fca5a5; }
+    
+    .svg-wrapper { width: 90px; height: 90px; margin-bottom: 20px; transition: 0.5s; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.1)); }
+    .topic-card:hover .svg-wrapper { transform: scale(1.15) rotate(5deg); }
+    
+    .t-title { font-weight: 700; font-size: 1.2rem; color: #333; margin-bottom: 5px; line-height: 1.3; }
+    .t-meta { font-size: 0.75rem; font-weight: 700; color: #cbd5e1; letter-spacing: 1px; }
+
+</style>
+
+<div class="header-area">
+    <div class="container">
+        <div class="user-greet">{% if current_user.is_authenticated %}{{ current_user.username }}{% else %}Misafir{% endif %}</div>
+        <h1 class="main-slogan">Acil Durum<br><span style="color:#d32f2f">Asistanı.</span></h1>
+    </div>
+</div>
+
+<div class="container actions-row">
+    <a href="tel:112" class="act-btn act-call">
+        <i class="ph-duotone ph-phone-call act-icon"></i>
+        <span class="act-label">112</span>
+    </a>
+    <a href="#" onclick="sendSOS()" class="act-btn act-sos">
+        <i class="ph-duotone ph-warning-circle act-icon"></i>
+        <span class="act-label">SOS</span>
+    </a>
+    <a href="/quiz" class="act-btn act-quiz">
+        <i class="ph-duotone ph-exam act-icon"></i>
+        <span class="act-label">QUIZ</span>
+    </a>
+    <a href="#" onclick="openMap()" class="act-btn act-map">
+        <i class="ph-duotone ph-map-pin act-icon"></i>
+        <span class="act-label">KONUM</span>
+    </a>
+</div>
+
+<div class="container mt-5 pb-5">
+    <h6 class="fw-bold text-muted ps-2 mb-3 small">EĞİTİM MODÜLLERİ</h6>
+    <div class="row g-3">
+        {% for konu in konular %}
+        <div class="col-6 col-md-4 col-lg-3">
+            <a href="{{ url_for('konu_detay', id=konu.id) }}" class="topic-card">
+                <div class="svg-wrapper">
+                    {% set title_upper = konu.baslik.upper() %}
+                    {% set selected_svg = svg_map["GENEL"] %}
+                    {% if "GENEL" in title_upper %} {% set selected_svg = svg_map["GENEL"] %}
+                    {% elif "VÜCUT" in title_upper %} {% set selected_svg = svg_map["VÜCUT"] %}
+                    {% elif "TAŞIMA" in title_upper %} {% set selected_svg = svg_map["TAŞIMA"] %}
+                    {% elif "OED" in title_upper %} {% set selected_svg = svg_map["OED"] %}
+                    {% elif "YAŞAM" in title_upper %} {% set selected_svg = svg_map["YAŞAM"] %}
+                    {% elif "HAVA" in title_upper %} {% set selected_svg = svg_map["HAVA"] %}
+                    {% elif "BİLİNÇ" in title_upper %} {% set selected_svg = svg_map["BİLİNÇ"] %}
+                    {% elif "KANAMA" in title_upper %} {% set selected_svg = svg_map["KANAMA"] %}
+                    {% elif "ŞOK" in title_upper %} {% set selected_svg = svg_map["ŞOK"] %}
+                    {% elif "YARALANMA" in title_upper %} {% set selected_svg = svg_map["YARALANMA"] %}
+                    {% elif "BOĞULMA" in title_upper %} {% set selected_svg = svg_map["BOĞULMA"] %}
+                    {% elif "KIRIK" in title_upper %} {% set selected_svg = svg_map["KIRIK"] %}
+                    {% elif "HAYVAN" in title_upper %} {% set selected_svg = svg_map["HAYVAN"] %}
+                    {% elif "ZEHİRLENME" in title_upper %} {% set selected_svg = svg_map["ZEHİRLENME"] %}
+                    {% elif "YANIK" in title_upper %} {% set selected_svg = svg_map["YANIK"] %}
+                    {% elif "GÖZ" in title_upper %} {% set selected_svg = svg_map["GÖZ"] %}
+                    {% endif %}
+                    {{ selected_svg | safe }}
+                </div>
+                <span class="t-meta">MODÜL {{ "%02d" % konu.sira }}</span>
+                <h3 class="t-title">{{ konu.baslik }}</h3>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    function sendSOS() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                let lat = position.coords.latitude;
+                let lon = position.coords.longitude;
+                let msg = `ACİL DURUM! Yardıma ihtiyacım var. Konumum: https://www.google.com/maps?q=${lat},${lon}`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+            }, function(error) {
+                alert("Konum alınamadı. Lütfen GPS izni verin.");
+            });
+        } else {
+            alert("Tarayıcınız konum servisini desteklemiyor.");
+        }
+    }
+
+    function openMap() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function(position) {
+                let lat = position.coords.latitude;
+                let lon = position.coords.longitude;
+                window.open(`https://www.google.com/maps?q=${lat},${lon}`, '_blank');
+            });
+        }
+    }
+</script>
+{% endblock %}

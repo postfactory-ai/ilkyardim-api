@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<style>
+    /* Wiki Tarzı Okuma Alanı Tasarımı */
+    .wiki-container {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        padding: 40px;
+    }
+    .wiki-content {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 1.1rem;
+        line-height: 1.8;
+        color: #2c3e50;
+    }
+    /* Başlıklar */
+    .wiki-content h3 {
+        color: #d63384; /* Pembe/Kırmızı ton */
+        font-weight: 700;
+        margin-top: 40px;
+        border-bottom: 2px solid #f8f9fa;
+        padding-bottom: 10px;
+    }
+    .wiki-content h4 {
+        color: #0d6efd; /* Mavi ton */
+        font-weight: 600;
+        margin-top: 25px;
+    }
+    /* Uyarı Kutuları (Otomatik eklenecek) */
+    .wiki-alert {
+        border-left: 5px solid;
+        padding: 15px 20px;
+        margin: 20px 0;
+        border-radius: 0 8px 8px 0;
+    }
+    .alert-warning-custom {
+        background-color: #fff3cd;
+        border-color: #ffc107;
+        color: #856404;
+    }
+    .alert-danger-custom {
+        background-color: #f8d7da;
+        border-color: #dc3545;
+        color: #721c24;
+    }
+    /* Kenar Menüsü */
+    .sidebar-sticky {
+        position: sticky;
+        top: 20px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .nav-link.active {
+        background-color: #dc3545 !important;
+        color: white !important;
+    }
+</style>
+
+<div class="row">
+    <div class="col-lg-3 d-none d-lg-block">
+        <div class="card shadow-sm border-0 sidebar-sticky">
+            <div class="card-header bg-dark text-white">
+                <h6 class="mb-0">📖 KONU BAŞLIKLARI</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for k in tum_konular %}
+                <a href="{{ url_for('konu_detay', id=k.id) }}" 
+                   class="list-group-item list-group-item-action {% if k.id == konu.id %}active{% endif %}">
+                    <small>{{ k.baslik }}</small>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-9">
+        <div class="wiki-container">
+            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
+                <h1 class="display-6 text-danger fw-bold">{{ konu.baslik }}</h1>
+                <a href="/yonetim/duzenle/{{ konu.id }}" class="btn btn-outline-secondary btn-sm">✏️ Düzenle</a>
+            </div>
+
+            <div class="wiki-content">
+                {% if konu.icerik|length < 50 %}
+                    <div class="alert alert-info">
+                        Bu konunun içeriği henüz hazırlanmamış veya yüklenmemiş.
+                    </div>
+                {% else %}
+                    {{ konu.icerik | safe }}
+                {% endif %}
+            </div>
+
+            <div class="mt-5 pt-3 border-top text-center">
+                <p class="text-muted small">Bu içerik T.C. Sağlık Bakanlığı İlk Yardım Eğitim Kitabı (2025) referans alınarak oluşturulmuştur.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

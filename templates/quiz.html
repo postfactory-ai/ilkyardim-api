@@ -1,0 +1,71 @@
+
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="card border-0 shadow-sm p-4 text-center" id="quiz-box">
+        <h4 class="fw-bold mb-3" id="q-text">Soru Yükleniyor...</h4>
+        <div class="d-grid gap-2 mt-4" id="options">
+            </div>
+        <div class="mt-4 text-muted small">
+            Soru: <span id="q-index">1</span> / <span id="q-total">5</span>
+        </div>
+    </div>
+    
+    <div class="card border-0 shadow-sm p-5 text-center d-none" id="result-box">
+        <i class="ph-duotone ph-trophy text-warning" style="font-size: 4rem;"></i>
+        <h2 class="fw-bold mt-3">Tebrikler!</h2>
+        <p class="lead">Puanınız: <span id="score" class="fw-bold text-danger">0</span></p>
+        <button onclick="location.reload()" class="btn btn-dark mt-3">Tekrar Dene</button>
+    </div>
+</div>
+
+<script>
+    const questions = [
+        { q: "Yetişkin bir insanda kalp masajı basısı göğüs kemiğini kaç cm aşağı indirmelidir?", a: ["2 cm", "5 cm", "8 cm", "10 cm"], correct: 1 },
+        { q: "Aşağıdakilerden hangisi şok belirtisidir?", a: ["Yüzde kızarıklık", "Hızlı ve zayıf nabız", "Sıcak cilt", "Yavaş solunum"], correct: 1 },
+        { q: "Burun kanamasında yapılması gereken ilk yardım nedir?", a: ["Başı geriye yaslamak", "Burun kanatlarını sıkıp öne eğilmek", "Sırt üstü yatmak", "Burnu yıkamak"], correct: 1 },
+        { q: "112 aranırken verilmesi gereken en önemli bilgi nedir?", a: ["Hastanın adı", "Adres tarifi", "Olayın tanımı ve konum", "Arayanın kimliği"], correct: 2 },
+        { q: "OED (Otomatik Şok Cihazı) hangi durumda kullanılır?", a: ["Kırıklarda", "Yanıklarda", "Kalp durmasında", "Zehirlenmede"], correct: 2 }
+    ];
+
+    let currentQ = 0;
+    let score = 0;
+
+    function loadQuestion() {
+        if(currentQ >= questions.length) {
+            document.getElementById('quiz-box').classList.add('d-none');
+            document.getElementById('result-box').classList.remove('d-none');
+            document.getElementById('score').innerText = score * 20;
+            return;
+        }
+        let q = questions[currentQ];
+        document.getElementById('q-text').innerText = q.q;
+        document.getElementById('q-index').innerText = currentQ + 1;
+        document.getElementById('q-total').innerText = questions.length;
+        
+        let optsDiv = document.getElementById('options');
+        optsDiv.innerHTML = "";
+        
+        q.a.forEach((opt, index) => {
+            let btn = document.createElement('button');
+            btn.className = "btn btn-outline-dark py-3 fw-bold text-start ps-4";
+            btn.innerText = opt;
+            btn.onclick = () => checkAnswer(index);
+            optsDiv.appendChild(btn);
+        });
+    }
+
+    function checkAnswer(index) {
+        if(index === questions[currentQ].correct) {
+            score++;
+            alert("✅ Doğru!");
+        } else {
+            alert("❌ Yanlış!");
+        }
+        currentQ++;
+        loadQuestion();
+    }
+
+    loadQuestion();
+</script>
+{% endblock %}

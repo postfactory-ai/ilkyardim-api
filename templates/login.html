@@ -1,0 +1,35 @@
+
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+            <div class="card border-0 shadow-lg p-4 rounded-4">
+                <h2 class="fw-bold mb-4 text-center">Giriş Yap</h2>
+                
+                <a href="/login/google" class="btn btn-outline-dark w-100 py-2 mb-3 fw-bold d-flex align-items-center justify-content-center gap-2">
+                    <img src="https://www.svgrepo.com/show/475656/google-color.svg" width="20" height="20">
+                    Google ile Devam Et
+                </a>
+                
+                <div class="text-center text-muted mb-3 small">VEYA E-POSTA İLE</div>
+                
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="fw-bold small text-muted">Kullanıcı Adı veya E-Posta</label>
+                        <input type="text" name="username" class="form-control form-control-lg bg-light border-0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="fw-bold small text-muted">Şifre</label>
+                        <input type="password" name="password" class="form-control form-control-lg bg-light border-0" required>
+                    </div>
+                    <button class="btn btn-danger w-100 py-2 fw-bold rounded-3">Giriş Yap</button>
+                </form>
+                <div class="mt-4 text-center">
+                    <a href="/kayit" class="text-muted text-decoration-none">Hesabın yok mu? <span class="fw-bold text-dark">Kayıt Ol</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
