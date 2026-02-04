@@ -1,71 +1,131 @@
-
 {% extends "layout.html" %}
+
 {% block content %}
-<div class="container mt-4">
-    <div class="card border-0 shadow-sm p-4 text-center" id="quiz-box">
-        <h4 class="fw-bold mb-3" id="q-text">Soru Yükleniyor...</h4>
-        <div class="d-grid gap-2 mt-4" id="options">
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h6 class="text-muted text-uppercase fw-bold mb-1">Konu Testi</h6>
+                    <h2 class="fw-bold text-danger mb-0">{{ konu.baslik }}</h2>
+                </div>
+                <span class="badge bg-dark rounded-pill px-3 py-2 fs-6">{{ sorular|length }} Soru</span>
             </div>
-        <div class="mt-4 text-muted small">
-            Soru: <span id="q-index">1</span> / <span id="q-total">5</span>
+
+            {% if sorular|length == 0 %}
+                <div class="card border-0 shadow-sm rounded-4 text-center p-5">
+                    <div class="card-body">
+                        <i class="ph-duotone ph-smiley-sad fs-1 text-warning mb-3"></i>
+                        <h4 class="fw-bold">Bu konuda henüz soru yok.</h4>
+                        <p class="text-muted">Admin panele gidip soru ekleyebilirsin.</p>
+                        
+                        <div class="d-flex justify-content-center gap-2 mt-4">
+                            <a href="/" class="btn btn-outline-secondary rounded-pill">Geri Dön</a>
+                            {% if current_user.is_authenticated and current_user.is_admin %}
+                                <a href="/yonetim/soru-ekle" class="btn btn-dark rounded-pill">Soru Ekle</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+
+                {% for soru in sorular %}
+                <div class="card border-0 shadow-sm mb-5 rounded-4 soru-karti animate__animated animate__fadeInUp" style="animation-delay: {{ loop.index * 0.1 }}s;">
+                    <div class="card-body p-4 p-lg-5">
+                        
+                        <h5 class="fw-bold mb-4 d-flex text-dark" style="line-height: 1.6;">
+                            <span class="text-danger me-2 fs-4">{{ loop.index }}.</span> 
+                            {{ soru.soru_metni }}
+                        </h5>
+
+                        <div class="d-grid gap-3">
+                            <button onclick="cevapVer(this, '{{ soru.dogru_cevap }}', 'A')" class="btn btn-outline-dark text-start p-3 rounded-3 secenek position-relative">
+                                <span class="fw-bold me-2 bg-light px-2 rounded border">A</span> {{ soru.a }}
+                            </button>
+                            <button onclick="cevapVer(this, '{{ soru.dogru_cevap }}', 'B')" class="btn btn-outline-dark text-start p-3 rounded-3 secenek position-relative">
+                                <span class="fw-bold me-2 bg-light px-2 rounded border">B</span> {{ soru.b }}
+                            </button>
+                            <button onclick="cevapVer(this, '{{ soru.dogru_cevap }}', 'C')" class="btn btn-outline-dark text-start p-3 rounded-3 secenek position-relative">
+                                <span class="fw-bold me-2 bg-light px-2 rounded border">C</span> {{ soru.c }}
+                            </button>
+                            <button onclick="cevapVer(this, '{{ soru.dogru_cevap }}', 'D')" class="btn btn-outline-dark text-start p-3 rounded-3 secenek position-relative">
+                                <span class="fw-bold me-2 bg-light px-2 rounded border">D</span> {{ soru.d }}
+                            </button>
+                        </div>
+                        
+                        <div class="sonuc-mesaji mt-4 p-3 rounded-3 d-none fw-bold text-center border"></div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                <div class="text-center mb-5">
+                    <a href="/" class="btn btn-secondary btn-lg rounded-pill px-5">Testi Bitir ve Çık</a>
+                </div>
+
+            {% endif %}
+
         </div>
-    </div>
-    
-    <div class="card border-0 shadow-sm p-5 text-center d-none" id="result-box">
-        <i class="ph-duotone ph-trophy text-warning" style="font-size: 4rem;"></i>
-        <h2 class="fw-bold mt-3">Tebrikler!</h2>
-        <p class="lead">Puanınız: <span id="score" class="fw-bold text-danger">0</span></p>
-        <button onclick="location.reload()" class="btn btn-dark mt-3">Tekrar Dene</button>
     </div>
 </div>
 
 <script>
-    const questions = [
-        { q: "Yetişkin bir insanda kalp masajı basısı göğüs kemiğini kaç cm aşağı indirmelidir?", a: ["2 cm", "5 cm", "8 cm", "10 cm"], correct: 1 },
-        { q: "Aşağıdakilerden hangisi şok belirtisidir?", a: ["Yüzde kızarıklık", "Hızlı ve zayıf nabız", "Sıcak cilt", "Yavaş solunum"], correct: 1 },
-        { q: "Burun kanamasında yapılması gereken ilk yardım nedir?", a: ["Başı geriye yaslamak", "Burun kanatlarını sıkıp öne eğilmek", "Sırt üstü yatmak", "Burnu yıkamak"], correct: 1 },
-        { q: "112 aranırken verilmesi gereken en önemli bilgi nedir?", a: ["Hastanın adı", "Adres tarifi", "Olayın tanımı ve konum", "Arayanın kimliği"], correct: 2 },
-        { q: "OED (Otomatik Şok Cihazı) hangi durumda kullanılır?", a: ["Kırıklarda", "Yanıklarda", "Kalp durmasında", "Zehirlenmede"], correct: 2 }
-    ];
+    function cevapVer(btn, dogruCevap, secilenSik) {
+        // Kartın içindeki elemanları bul
+        let parent = btn.parentElement;
+        let cardBody = parent.parentElement;
+        let tumSecenekler = parent.querySelectorAll('.secenek');
+        let sonucKutusu = cardBody.querySelector('.sonuc-mesaji');
 
-    let currentQ = 0;
-    let score = 0;
-
-    function loadQuestion() {
-        if(currentQ >= questions.length) {
-            document.getElementById('quiz-box').classList.add('d-none');
-            document.getElementById('result-box').classList.remove('d-none');
-            document.getElementById('score').innerText = score * 20;
-            return;
-        }
-        let q = questions[currentQ];
-        document.getElementById('q-text').innerText = q.q;
-        document.getElementById('q-index').innerText = currentQ + 1;
-        document.getElementById('q-total').innerText = questions.length;
+        // Eğer bu soru daha önce cevaplandıysa işlem yapma (Spam engelleme)
+        if (parent.classList.contains('cevaplandi')) return;
         
-        let optsDiv = document.getElementById('options');
-        optsDiv.innerHTML = "";
-        
-        q.a.forEach((opt, index) => {
-            let btn = document.createElement('button');
-            btn.className = "btn btn-outline-dark py-3 fw-bold text-start ps-4";
-            btn.innerText = opt;
-            btn.onclick = () => checkAnswer(index);
-            optsDiv.appendChild(btn);
-        });
-    }
+        // İşaretlendi olarak etiketle
+        parent.classList.add('cevaplandi');
 
-    function checkAnswer(index) {
-        if(index === questions[currentQ].correct) {
-            score++;
-            alert("✅ Doğru!");
+        // DOĞRU CEVAP MI?
+        if (secilenSik === dogruCevap) {
+            // Butonu Yeşil Yap
+            btn.classList.remove('btn-outline-dark');
+            btn.classList.add('btn-success', 'border-success');
+            
+            // Mesaj Göster
+            sonucKutusu.innerHTML = '<i class="ph-bold ph-check-circle fs-4 align-middle me-2"></i> Harika! Doğru Cevap.';
+            sonucKutusu.className = 'sonuc-mesaji mt-4 p-3 rounded-3 fw-bold text-center border bg-success-subtle text-success border-success animate__animated animate__headShake';
         } else {
-            alert("❌ Yanlış!");
-        }
-        currentQ++;
-        loadQuestion();
-    }
+            // Butonu Kırmızı Yap
+            btn.classList.remove('btn-outline-dark');
+            btn.classList.add('btn-danger', 'border-danger');
 
-    loadQuestion();
+            // Mesaj Göster
+            sonucKutusu.innerHTML = '<i class="ph-bold ph-x-circle fs-4 align-middle me-2"></i> Yanlış Cevap! Doğrusu: ' + dogruCevap;
+            sonucKutusu.className = 'sonuc-mesaji mt-4 p-3 rounded-3 fw-bold text-center border bg-danger-subtle text-danger border-danger animate__animated animate__headShake';
+            
+            // DOĞRU OLANI YEŞİL İLE GÖSTER (Öğretici olsun)
+            tumSecenekler.forEach(opt => {
+                // Şıkkın içindeki "A", "B" harfini kontrol etmiyoruz, butonun onclick'indeki parametreye bakmıyoruz.
+                // Basitçe metin içeriğinden veya sıradan gidebiliriz ama en garantisi:
+                // Butona tıklandığında gönderilen parametreyi kontrol etmek zordur dışarıdan.
+                // O yüzden HTML içindeki metne bakacağız.
+                
+                // Hile: Doğru cevabın olduğu butonu bulmak için onclick attribute'una bakıyoruz
+                if (opt.getAttribute('onclick').includes(`'${dogruCevap}'`) && opt.getAttribute('onclick').includes(`,'${dogruCevap}')`)) {
+                    opt.classList.remove('btn-outline-dark');
+                    opt.classList.add('btn-success');
+                }
+            });
+        }
+        
+        // Diğer şıkları pasif hale getir (Soluklaştır)
+        tumSecenekler.forEach(opt => {
+            if (opt !== btn) {
+                opt.style.opacity = '0.6';
+                opt.style.pointerEvents = 'none'; // Tıklamayı kapat
+            }
+        });
+
+        // Mesajı görünür yap
+        sonucKutusu.classList.remove('d-none');
+    }
 </script>
 {% endblock %}

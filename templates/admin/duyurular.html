@@ -1,0 +1,75 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3 class="fw-bold"><i class="ph-bold ph-paper-plane-right"></i> Push Bildirim Merkezi</h3>
+                <a href="/yonetim" class="btn btn-outline-secondary">Geri Dön</a>
+            </div>
+
+            <div class="card shadow-lg border-0 rounded-4 mb-4">
+                <div class="card-header bg-dark text-white p-3 rounded-top-4">
+                    <h5 class="mb-0 fw-bold"><i class="ph-bold ph-device-mobile"></i> Mobil Bildirim Gönder</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Bildirim Başlığı</label>
+                            <input type="text" name="baslik" class="form-control" placeholder="Örn: Unutma!" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Mesaj İçeriği</label>
+                            <textarea name="mesaj" class="form-control" rows="2" placeholder="Örn: Bugün hiç test çözmedin..." required></textarea>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="form-label fw-bold text-danger">Tıklanınca Açılacak Sayfa (Opsiyonel)</label>
+                            <select name="hedef" class="form-select">
+                                <option value="/">Uygulama Ana Sayfası</option>
+                                <option value="/quiz">Quiz Bölümü (Tüm Testler)</option>
+                                <option value="/arama">Arama Ekranı</option>
+                                <option value="/profil">Profil Sayfası</option>
+                            </select>
+                            <div class="form-text">Kullanıcı bildirime tıkladığında uygulama direkt bu sayfayı açacak.</div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-danger btn-lg">
+                                <i class="ph-bold ph-paper-plane-right"></i> Tüm Kullanıcılara Gönder
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <h5 class="fw-bold text-muted mb-3">Gönderilen Bildirimler</h5>
+            <div class="list-group shadow-sm rounded-4">
+                {% for duyuru in duyurular %}
+                <div class="list-group-item d-flex justify-content-between align-items-center p-3">
+                    <div>
+                        <div class="d-flex align-items-center gap-2">
+                            <h6 class="mb-0 fw-bold">{{ duyuru.baslik }}</h6>
+                            {% if duyuru.hedef != '/' %}
+                                <span class="badge bg-secondary py-1" style="font-size: 0.7rem;">Hedef: {{ duyuru.hedef }}</span>
+                            {% endif %}
+                        </div>
+                        <p class="mb-0 small text-muted">{{ duyuru.mesaj }}</p>
+                    </div>
+                    <a href="/yonetim/duyuru-sil/{{ duyuru.id }}" class="btn btn-outline-light text-danger border-0 btn-sm" onclick="return confirm('Silmek istediğine emin misin?')">
+                        <i class="ph-bold ph-trash fs-5"></i>
+                    </a>
+                </div>
+                {% else %}
+                <div class="list-group-item text-center py-4 text-muted">
+                    Henüz hiç bildirim gönderilmedi.
+                </div>
+                {% endfor %}
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

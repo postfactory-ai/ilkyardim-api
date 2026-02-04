@@ -1,101 +1,207 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<style>
-    /* Wiki Tarzı Okuma Alanı Tasarımı */
-    .wiki-container {
-        background: #fff;
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-        padding: 40px;
-    }
-    .wiki-content {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        font-size: 1.1rem;
-        line-height: 1.8;
-        color: #2c3e50;
-    }
-    /* Başlıklar */
-    .wiki-content h3 {
-        color: #d63384; /* Pembe/Kırmızı ton */
-        font-weight: 700;
-        margin-top: 40px;
-        border-bottom: 2px solid #f8f9fa;
-        padding-bottom: 10px;
-    }
-    .wiki-content h4 {
-        color: #0d6efd; /* Mavi ton */
-        font-weight: 600;
-        margin-top: 25px;
-    }
-    /* Uyarı Kutuları (Otomatik eklenecek) */
-    .wiki-alert {
-        border-left: 5px solid;
-        padding: 15px 20px;
-        margin: 20px 0;
-        border-radius: 0 8px 8px 0;
-    }
-    .alert-warning-custom {
-        background-color: #fff3cd;
-        border-color: #ffc107;
-        color: #856404;
-    }
-    .alert-danger-custom {
-        background-color: #f8d7da;
-        border-color: #dc3545;
-        color: #721c24;
-    }
-    /* Kenar Menüsü */
-    .sidebar-sticky {
-        position: sticky;
-        top: 20px;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
-    .nav-link.active {
-        background-color: #dc3545 !important;
-        color: white !important;
-    }
-</style>
+<div id="progressBarContainer" class="fixed-top" style="height: 4px; background: transparent; z-index: 2000; top: 0;">
+    <div id="progressBar" style="height: 100%; background: #dc3545; width: 0%;"></div>
+</div>
 
-<div class="row">
-    <div class="col-lg-3 d-none d-lg-block">
-        <div class="card shadow-sm border-0 sidebar-sticky">
-            <div class="card-header bg-dark text-white">
-                <h6 class="mb-0">📖 KONU BAŞLIKLARI</h6>
-            </div>
-            <div class="list-group list-group-flush">
-                {% for k in tum_konular %}
-                <a href="{{ url_for('konu_detay', id=k.id) }}" 
-                   class="list-group-item list-group-item-action {% if k.id == konu.id %}active{% endif %}">
-                    <small>{{ k.baslik }}</small>
-                </a>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-
-    <div class="col-lg-9">
-        <div class="wiki-container">
-            <div class="d-flex justify-content-between align-items-center border-bottom pb-3 mb-4">
-                <h1 class="display-6 text-danger fw-bold">{{ konu.baslik }}</h1>
-                <a href="/yonetim/duzenle/{{ konu.id }}" class="btn btn-outline-secondary btn-sm">✏️ Düzenle</a>
-            </div>
-
-            <div class="wiki-content">
-                {% if konu.icerik|length < 50 %}
-                    <div class="alert alert-info">
-                        Bu konunun içeriği henüz hazırlanmamış veya yüklenmemiş.
-                    </div>
-                {% else %}
-                    {{ konu.icerik | safe }}
-                {% endif %}
-            </div>
-
-            <div class="mt-5 pt-3 border-top text-center">
-                <p class="text-muted small">Bu içerik T.C. Sağlık Bakanlığı İlk Yardım Eğitim Kitabı (2025) referans alınarak oluşturulmuştur.</p>
-            </div>
-        </div>
+<div class="container-fluid bg-light border-bottom d-none d-lg-block">
+    <div class="container py-3">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="/" class="text-decoration-none text-muted">Anasayfa</a></li>
+                <li class="breadcrumb-item active text-danger fw-bold" aria-current="page">{{ konu.baslik }}</li>
+            </ol>
+        </nav>
     </div>
 </div>
+
+<div class="container mt-4 mb-5">
+    <div class="row g-5">
+        
+        <div class="col-lg-8">
+            
+            <div class="mb-4 border-bottom pb-4">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <span class="badge bg-danger bg-opacity-10 text-danger px-2 py-1 rounded fw-bold mb-2">MODÜL {{ konu.sira }}</span>
+                        <h1 class="fw-bold text-dark mb-2 h2">{{ konu.baslik }}</h1>
+                    </div>
+                    
+                    {% if current_user.is_authenticated and current_user.is_admin %}
+                    <a href="/yonetim/duzenle/{{ konu.id }}" class="btn btn-sm btn-outline-warning">
+                        <i class="ph-bold ph-pencil-simple"></i> Düzenle
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="bg-white p-4 rounded-3 shadow-sm border position-relative" id="articleContent">
+                
+                {% if konu.resim %}
+                <div class="mb-4 text-center">
+                    <img src="{{ konu.resim }}" class="img-fluid rounded-3 w-100 object-fit-cover" style="max-height: 350px;">
+                </div>
+                {% endif %}
+
+                <div class="content-text fs-6" style="line-height: 1.8; color: #333;">
+                    {{ konu.icerik | safe }}
+                </div>
+
+            </div>
+
+            <div class="mt-4 p-4 bg-light rounded-3 border text-center">
+                <h5 class="fw-bold mb-2">Bölümü tamamladın.</h5>
+                <p class="text-muted small mb-3">Bilgilerini pekiştirmek ister misin?</p>
+                
+                <div class="d-flex justify-content-center gap-2">
+                    <a href="/" class="btn btn-outline-secondary btn-sm px-4 rounded-pill">
+                        Anasayfa
+                    </a>
+                    <a href="/quiz/{{ konu.id }}" class="btn btn-danger btn-sm px-4 rounded-pill shadow-sm">
+                        Testi Çöz
+                    </a>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-lg-4 d-none d-lg-block">
+            <div class="sticky-top" style="top: 20px;">
+                <div class="card border-0 shadow-sm rounded-3 bg-light">
+                    <div class="card-body p-3">
+                        <h6 class="fw-bold text-muted small mb-3 border-bottom pb-2">İÇİNDEKİLER</h6>
+                        
+                        <div class="custom-scroll" style="max-height: 70vh; overflow-y: auto; padding-right: 5px;">
+                            <nav id="desktop-toc" class="nav flex-column gap-1">
+                                </nav>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<button class="btn btn-dark rounded-circle shadow d-lg-none position-fixed bottom-0 end-0 m-3 z-3 d-flex align-items-center justify-content-center" 
+        style="width: 50px; height: 50px;" 
+        type="button" 
+        data-bs-toggle="offcanvas" 
+        data-bs-target="#mobileTocMenu">
+    <i class="ph-bold ph-list-dashes fs-4"></i>
+</button>
+
+<div class="offcanvas offcanvas-bottom rounded-top-4 h-50" tabindex="-1" id="mobileTocMenu">
+    <div class="offcanvas-header border-bottom py-3">
+        <h6 class="offcanvas-title fw-bold">Konu Başlıkları</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body pt-0">
+        <nav id="mobile-toc" class="nav flex-column gap-2 mt-3">
+            </nav>
+    </div>
+</div>
+
+<style>
+    /* Sağ menü için özel ince scroll bar */
+    .custom-scroll::-webkit-scrollbar {
+        width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+        background: #f1f1f1; 
+        border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+        background: #ccc; 
+        border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+        background: #aaa; 
+    }
+
+    /* Link Hedefleme Ayarı */
+    .content-text h4, .content-text h5 {
+        scroll-margin-top: 100px;
+    }
+
+    .content-text h4 { 
+        color: #dc3545; 
+        font-weight: 700; 
+        margin-top: 40px; 
+        margin-bottom: 15px; 
+        font-size: 1.3rem;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+    }
+
+    .content-text h5 { 
+        color: #2c3e50; 
+        font-weight: 600; 
+        margin-top: 25px; 
+        margin-bottom: 10px; 
+        font-size: 1.1rem;
+    }
+
+    .toc-link {
+        color: #666;
+        text-decoration: none;
+        font-size: 0.9rem;
+        padding: 4px 10px;
+        border-radius: 4px;
+        display: block;
+        transition: all 0.2s;
+    }
+    .toc-link:hover, .toc-link.active {
+        background-color: #fff;
+        color: #dc3545;
+        font-weight: 600;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .toc-sub-link { margin-left: 15px; font-size: 0.85rem; border-left: 2px solid #ddd; border-radius: 0 4px 4px 0; }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const contentDiv = document.querySelector('.content-text');
+        const headers = contentDiv.querySelectorAll('h4, h5');
+        const desktopToc = document.getElementById('desktop-toc');
+        const mobileToc = document.getElementById('mobile-toc');
+        
+        if (headers.length === 0) {
+            desktopToc.innerHTML = '<p class="text-muted small">Başlık bulunamadı.</p>';
+        }
+
+        headers.forEach((header, index) => {
+            const id = 'section-' + index;
+            header.id = id;
+
+            const isMain = header.tagName === 'H4';
+            const linkClass = isMain ? 'toc-link fw-bold' : 'toc-link toc-sub-link';
+            const linkHTML = `<a href="#${id}" class="${linkClass}">${header.innerText}</a>`;
+
+            desktopToc.innerHTML += linkHTML;
+            mobileToc.innerHTML += linkHTML;
+        });
+
+        window.addEventListener('scroll', () => {
+            const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+            const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const scrolled = (winScroll / height) * 100;
+            document.getElementById("progressBar").style.width = scrolled + "%";
+        });
+        
+        const mobileLinks = mobileToc.querySelectorAll('a');
+        mobileLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                const openCanvas = document.querySelector('.offcanvas.show');
+                if(openCanvas){
+                    const instance = bootstrap.Offcanvas.getInstance(openCanvas);
+                    instance.hide();
+                }
+            });
+        });
+    });
+</script>
 {% endblock %}

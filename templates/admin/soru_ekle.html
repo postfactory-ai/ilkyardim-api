@@ -1,0 +1,90 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-lg border-0 rounded-4">
+                <div class="card-header bg-danger text-white p-4 rounded-top-4">
+                    <h3 class="mb-0 fw-bold"><i class="ph-bold ph-question"></i> Soru Bankası</h3>
+                    <p class="mb-0 opacity-75">Hangi konuya soru eklemek istersin?</p>
+                </div>
+                <div class="card-body p-5">
+                    
+                    <form method="POST">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Konu Seçiniz</label>
+                            <select name="konu_id" class="form-select form-select-lg" required>
+                                <option value="" disabled selected>Bir konu seçin...</option>
+                                {% for konu in konular %}
+                                    <option value="{{ konu.id }}">{{ konu.sira }}. {{ konu.baslik }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Soru Metni</label>
+                            <textarea name="soru" class="form-control" rows="3" placeholder="Örn: Turnike uygulaması ne kadar sürede bir gevşetilir?" required></textarea>
+                        </div>
+
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <span class="input-group-text fw-bold text-danger">A</span>
+                                    <input type="text" name="a" class="form-control" placeholder="Seçenek A" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <span class="input-group-text fw-bold text-danger">B</span>
+                                    <input type="text" name="b" class="form-control" placeholder="Seçenek B" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <span class="input-group-text fw-bold text-danger">C</span>
+                                    <input type="text" name="c" class="form-control" placeholder="Seçenek C" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <span class="input-group-text fw-bold text-danger">D</span>
+                                    <input type="text" name="d" class="form-control" placeholder="Seçenek D" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Doğru Cevap Hangisi?</label>
+                            <div class="d-flex gap-3">
+                                <input type="radio" class="btn-check" name="dogru" id="dA" value="A" required>
+                                <label class="btn btn-outline-danger px-4" for="dA">A</label>
+
+                                <input type="radio" class="btn-check" name="dogru" id="dB" value="B">
+                                <label class="btn btn-outline-danger px-4" for="dB">B</label>
+
+                                <input type="radio" class="btn-check" name="dogru" id="dC" value="C">
+                                <label class="btn btn-outline-danger px-4" for="dC">C</label>
+
+                                <input type="radio" class="btn-check" name="dogru" id="dD" value="D">
+                                <label class="btn btn-outline-danger px-4" for="dD">D</label>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-dark btn-lg">
+                                <i class="ph-bold ph-plus-circle"></i> Soruyu Havuza Ekle
+                            </button>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+            
+            <div class="text-center mt-3">
+                <a href="/yonetim" class="text-muted text-decoration-none">Yönetim Paneline Dön</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

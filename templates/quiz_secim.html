@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="text-center mb-5">
+        <h2 class="fw-bold text-dark">Kendini Sınamaya Hazır mısın?</h2>
+        <p class="text-muted">Hangi konudan test olmak istiyorsan aşağıdan seç.</p>
+    </div>
+
+    <div class="row g-4">
+        {% for konu in konular %}
+        <div class="col-md-6 col-lg-3">
+            <a href="/quiz/{{ konu.id }}" class="text-decoration-none">
+                <div class="card h-100 border-0 shadow-sm rounded-4 transition-card text-center p-4">
+                    <div class="card-body">
+                        <div class="d-inline-flex align-items-center justify-content-center bg-danger-subtle text-danger rounded-circle mb-3" style="width: 60px; height: 60px;">
+                            {% if konu.sira == 1 %}<i class="ph-bold ph-info fs-3"></i>{% endif %}
+                            {% if konu.sira == 2 %}<i class="ph-bold ph-heartbeat fs-3"></i>{% endif %}
+                            {% if konu.sira == 3 %}<i class="ph-bold ph-person-simple-walk fs-3"></i>{% endif %}
+                            {% if konu.sira == 4 %}<i class="ph-bold ph-lightning fs-3"></i>{% endif %}
+                            {% if konu.sira == 5 %}<i class="ph-bold ph-hand-heart fs-3"></i>{% endif %}
+                            {% if konu.sira > 5 %}<i class="ph-bold ph-exam fs-3"></i>{% endif %}
+                        </div>
+                        
+                        <h6 class="fw-bold text-dark mb-1">{{ konu.baslik }}</h6>
+                        <small class="text-muted">Testi Başlat <i class="ph-bold ph-arrow-right"></i></small>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+    .transition-card { transition: transform 0.2s, box-shadow 0.2s; }
+    .transition-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important; border: 1px solid #dc3545 !important; }
+</style>
+{% endblock %}

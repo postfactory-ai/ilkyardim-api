@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold"><i class="ph-bold ph-shield-check"></i> Hesap ve Yetki Merkezi</h3>
+        <a href="/yonetim" class="btn btn-outline-secondary">Geri Dön</a>
+    </div>
+
+    <div class="row g-4">
+        
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-header bg-dark text-white p-3 rounded-top-4">
+                    <h5 class="mb-0 fw-bold"><i class="ph-bold ph-lock-key"></i> Şifremi Değiştir</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST">
+                        <input type="hidden" name="islem_turu" value="sifre_degistir">
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Mevcut Şifreniz</label>
+                            <input type="password" name="eski_sifre" class="form-control" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Yeni Şifreniz</label>
+                            <input type="password" name="yeni_sifre" class="form-control" placeholder="En az 4 karakter" required>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-dark">
+                                <i class="ph-bold ph-arrows-clockwise"></i> Güncelle
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-header bg-danger text-white p-3 rounded-top-4">
+                    <h5 class="mb-0 fw-bold"><i class="ph-bold ph-user-plus"></i> Yeni Admin Ekle</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-info py-2 small">
+                        <i class="ph-bold ph-info me-1"></i> Eklenen kişi tam yetkiye sahip olacaktır.
+                    </div>
+                    <form method="POST">
+                        <input type="hidden" name="islem_turu" value="admin_ekle">
+                        
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Kullanıcı Adı</label>
+                                <input type="text" name="kadi" class="form-control" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">E-Posta</label>
+                                <input type="email" name="email" class="form-control" required>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Giriş Şifresi</label>
+                            <input type="text" name="sifre" class="form-control" placeholder="Örn: 123456" required>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="ph-bold ph-check-circle"></i> Yetkilendir ve Ekle
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="mt-5 mb-5">
+        <h5 class="fw-bold text-muted mb-3">Sistem Yöneticileri (Adminler)</h5>
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="list-group list-group-flush rounded-4">
+                {% for admin in adminler %}
+                <div class="list-group-item p-3 d-flex align-items-center">
+                    <div class="bg-light rounded-circle p-2 me-3 text-secondary">
+                        <i class="ph-bold ph-crown fs-4"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-0 text-dark">{{ admin.username }}</h6>
+                        <small class="text-muted">{{ admin.email }}</small>
+                    </div>
+                    {% if admin.id == current_user.id %}
+                    <span class="badge bg-success ms-auto">Siz</span>
+                    {% else %}
+                    <span class="badge bg-secondary ms-auto">Yönetici</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

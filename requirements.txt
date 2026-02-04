@@ -2,5 +2,9 @@ Flask
 Flask-SQLAlchemy
 Flask-Login
 Werkzeug
-psycopg2-binary
+Authlib
+requests
 python-dotenv
+psycopg2-binary
+gunicorn
+email-validator

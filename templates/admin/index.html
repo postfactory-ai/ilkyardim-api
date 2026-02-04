@@ -1,34 +1,139 @@
-
 {% extends "layout.html" %}
+
 {% block content %}
 <div class="container mt-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="fa-solid fa-gear text-danger"></i> Yönetim Paneli</h2>
-        <a href="/" class="btn btn-outline-secondary">Siteye Dön</a>
+    
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="fw-bold text-dark mb-1">Yönetim Paneli</h2>
+            <p class="text-muted">İçerikleri, soruları ve bildirimleri buradan yönet.</p>
+        </div>
+        <a href="/" class="btn btn-outline-secondary rounded-pill">
+            <i class="ph-bold ph-arrow-left"></i> Siteye Dön
+        </a>
     </div>
-    <div class="card shadow-sm">
-        <div class="card-body p-0">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Başlık</th>
-                        <th>İşlemler</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for k in konular %}
-                    <tr>
-                        <td>{{ k.sira }}</td>
-                        <td>{{ k.baslik }}</td>
-                        <td>
-                            <a href="{{ url_for('yonetim_duzenle', id=k.id) }}" class="btn btn-sm btn-primary">Düzenle</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+
+    <div class="row g-4">
+        
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-4 bg-primary text-white h-100">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="fs-1 mb-2"><i class="ph-duotone ph-books"></i></div>
+                        <h5 class="fw-bold">Toplam Modül</h5>
+                    </div>
+                    <h2 class="fw-bold mb-0">{{ konular|length }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-4 bg-danger text-white h-100">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="fs-1 mb-2"><i class="ph-duotone ph-megaphone"></i></div>
+                        <h5 class="fw-bold">Aktif Bildirim</h5>
+                    </div>
+                    <h2 class="fw-bold mb-0">{{ duyuru_sayisi }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-4 bg-dark text-white h-100">
+                <div class="card-body p-4 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="fs-1 mb-2"><i class="ph-duotone ph-users"></i></div>
+                        <h5 class="fw-bold">Admin Durumu</h5>
+                    </div>
+                    <p class="mb-0 opacity-75">Sistem Aktif</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 mt-4">
+            <h5 class="fw-bold text-muted mb-3 border-bottom pb-2">Hızlı İşlemler</h5>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <a href="/yonetim/soru-ekle" class="text-decoration-none">
+                <div class="card border-0 shadow-sm rounded-4 h-100 transition-card">
+                    <div class="card-body p-4 text-center">
+                        <div class="bg-success-subtle text-success rounded-circle d-inline-flex p-3 mb-3">
+                            <i class="ph-bold ph-question fs-3"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark">Soru Bankası</h5>
+                        <p class="text-muted small">Quizlere yeni soru ekle.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <a href="/yonetim/duyurular" class="text-decoration-none">
+                <div class="card border-0 shadow-sm rounded-4 h-100 transition-card">
+                    <div class="card-body p-4 text-center">
+                        <div class="bg-warning-subtle text-warning rounded-circle d-inline-flex p-3 mb-3">
+                            <i class="ph-bold ph-megaphone fs-3"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark">Duyuru & Bildirim</h5>
+                        <p class="text-muted small">Mobil bildirim gönder.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <a href="/yonetim/hesap" class="text-decoration-none">
+                <div class="card border-0 shadow-sm rounded-4 h-100 transition-card">
+                    <div class="card-body p-4 text-center">
+                        <div class="bg-secondary-subtle text-secondary rounded-circle d-inline-flex p-3 mb-3">
+                            <i class="ph-bold ph-lock-key fs-3"></i>
+                        </div>
+                        <h5 class="fw-bold text-dark">Hesap Ayarları</h5>
+                        <p class="text-muted small">Şifre ve profil düzenle.</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+    </div>
+
+    <div class="mt-5">
+        <h5 class="fw-bold text-muted mb-3 border-bottom pb-2">Modül İçerikleri</h5>
+        
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4 py-3">Sıra</th>
+                            <th class="py-3">Başlık</th>
+                            <th class="py-3 text-end pe-4">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for konu in konular %}
+                        <tr>
+                            <td class="ps-4 fw-bold text-muted">#{{ konu.sira }}</td>
+                            <td class="fw-bold">{{ konu.baslik }}</td>
+                            <td class="text-end pe-4">
+                                <a href="/yonetim/duzenle/{{ konu.id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                                    <i class="ph-bold ph-pencil-simple me-1"></i> Düzenle
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+
 </div>
+
+<style>
+    .transition-card { transition: transform 0.2s; }
+    .transition-card:hover { transform: translateY(-5px); background-color: #f8f9fa; }
+</style>
 {% endblock %}

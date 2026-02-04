@@ -1,41 +1,121 @@
-
 {% extends "layout.html" %}
 
 {% block content %}
 <div class="container mt-5">
-    <h3 class="fw-bold mb-4">
-        <i class="ph-duotone ph-magnifying-glass text-danger"></i> 
-        "{{ kelime }}" için Arama Sonuçları
-    </h3>
-
-    {% if sonuclar %}
-        <div class="row g-3">
-            {% for konu in sonuclar %}
-            <div class="col-md-6">
-                <a href="{{ url_for('konu_detay', id=konu.id) }}" class="text-decoration-none text-dark">
-                    <div class="card border-0 shadow-sm h-100 p-3">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="bg-light rounded-circle p-3">
-                                <i class="ph-duotone ph-first-aid text-danger fs-4"></i>
-                            </div>
-                            <div>
-                                <h5 class="fw-bold m-0">{{ konu.baslik }}</h5>
-                                <small class="text-muted">MODÜL {{ konu.sira }}</small>
-                            </div>
-                            <i class="ph-bold ph-caret-right ms-auto text-muted"></i>
-                        </div>
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body p-4">
+                    <div class="position-relative">
+                        <i class="ph-bold ph-magnifying-glass position-absolute top-50 start-0 translate-middle-y ms-3 text-muted fs-4"></i>
+                        <input type="text" id="liveSearchInput" class="form-control form-control-lg border-2 ps-5 rounded-pill" 
+                               value="{{ kelime }}" 
+                               placeholder="Canlı Arama: Turnike, 112, Kırık..." autocomplete="off" autofocus>
                     </div>
-                </a>
+                </div>
             </div>
-            {% endfor %}
+
+            <div id="loadingSpinner" class="text-center my-4 d-none">
+                <div class="spinner-border text-danger" role="status">
+                    <span class="visually-hidden">Aranıyor...</span>
+                </div>
+                <p class="text-muted mt-2 small">Aranıyor...</p>
+            </div>
+
+            <div id="resultsArea" class="list-group list-group-flush shadow-sm rounded-4 overflow-hidden">
+                <div class="text-center p-5 text-muted opacity-50">
+                    <i class="ph-duotone ph-keyboard fs-1 mb-2"></i>
+                    <p>Aramak için yazmaya başlayın...</p>
+                </div>
+            </div>
+
         </div>
-    {% else %}
-        <div class="alert alert-warning text-center p-5 rounded-4">
-            <i class="ph-duotone ph-warning-circle fs-1 mb-3"></i>
-            <h4>Sonuç Bulunamadı</h4>
-            <p>Farklı bir anahtar kelime deneyin (Örn: Yanık, Kırık, Kalp).</p>
-            <a href="/" class="btn btn-outline-dark mt-2">Ana Sayfaya Dön</a>
-        </div>
-    {% endif %}
+    </div>
 </div>
+
+<script>
+    const searchInput = document.getElementById('liveSearchInput');
+    const resultsArea = document.getElementById('resultsArea');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    let timeout = null;
+
+    const icons = {
+        1: 'ℹ️', 2: '🫀', 3: '🚑', 4: '⚡', 5: '💓', 6: '💨', 
+        7: '🧠', 8: '🩸', 9: '⚠️', 10: '🩹', 11: '🌊', 
+        12: '🦴', 13: '🐱', 14: '🧪', 15: '🔥', 16: '👁️'
+    };
+
+    // 1. DİNLEYİCİ: Kullanıcı yazarken çalışır
+    searchInput.addEventListener('input', function (e) {
+        const query = e.target.value.trim();
+        clearTimeout(timeout);
+
+        if (query.length < 2) {
+            resultsArea.innerHTML = `
+                <div class="text-center p-5 text-muted opacity-50">
+                    <i class="ph-duotone ph-keyboard fs-1 mb-2"></i>
+                    <p>Aramak için yazmaya başlayın...</p>
+                </div>`;
+            return;
+        }
+
+        timeout = setTimeout(() => {
+            performSearch(query);
+        }, 300);
+    });
+
+    // 2. ARAMA FONKSİYONU
+    async function performSearch(query) {
+        loadingSpinner.classList.remove('d-none');
+        resultsArea.classList.add('opacity-25');
+
+        try {
+            const response = await fetch(`/api/arama?q=${encodeURIComponent(query)}`);
+            const data = await response.json();
+
+            resultsArea.innerHTML = '';
+
+            if (data.length === 0) {
+                resultsArea.innerHTML = `
+                    <div class="text-center p-5">
+                        <h4 class="fw-bold text-muted">Sonuç Bulunamadı 😔</h4>
+                        <p class="text-muted">"${query}" ile ilgili bir şey yok.</p>
+                    </div>`;
+            } else {
+                data.forEach(item => {
+                    const icon = icons[item.sira] || '📌';
+                    const html = `
+                        <a href="/konu/${item.id}" class="list-group-item list-group-item-action p-4 border-bottom animate__animated animate__fadeIn">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="bg-light rounded-circle p-2 me-3 fs-4">${icon}</div>
+                                <h5 class="mb-0 fw-bold text-dark">${item.baslik}</h5>
+                            </div>
+                            <p class="text-muted mb-0 small ms-5 ps-2" style="line-height: 1.6;">
+                                ${item.ozet}
+                            </p>
+                        </a>
+                    `;
+                    resultsArea.innerHTML += html;
+                });
+            }
+        } catch (error) {
+            console.error('Hata:', error);
+            resultsArea.innerHTML = '<div class="text-center text-danger p-4">Bir hata oluştu.</div>';
+        } finally {
+            loadingSpinner.classList.add('d-none');
+            resultsArea.classList.remove('opacity-25');
+        }
+    }
+
+    // 3. SAYFA YÜKLENDİĞİNDE KONTROL ET (Navbar'dan gelen aramalar için)
+    document.addEventListener('DOMContentLoaded', () => {
+        const gelenKelime = searchInput.value.trim();
+        if (gelenKelime.length > 1) {
+            performSearch(gelenKelime);
+        }
+    });
+</script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
 {% endblock %}

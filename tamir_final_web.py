@@ -1,187 +1,123 @@
+import pdfplumber
+import re
 import os
-import subprocess
+from app import app, db, Konu, User
+from werkzeug.security import generate_password_hash
 
-# --- YAPILANDIRMA ---
-BASE_DIR = os.getcwd()
-TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
-ADMIN_DIR = os.path.join(TEMPLATES_DIR, 'admin')
+# --- AYARLAR ---
+PDF_DOSYA_ADI = "sbacil-saglik-ilk-yardim-egitimi-kitabi-mayis-2025pdf.pdf" 
+BASLANGIC_SAYFASI = 15
 
-# Klasörleri Garantiye Al
-if not os.path.exists(ADMIN_DIR):
-    os.makedirs(ADMIN_DIR)
+print("\033[96m🔧 SİSTEM BAKIM MODU: VERİTABANI YENİLENİYOR...\033[0m")
 
-print("🛠️ SİSTEM ONARIMI BAŞLATILIYOR (Yönetim Paneli & Rotalar)...")
+# Başlık Desenleri
+BASLIK_DESENLERI = [
+    ("GENEL BİLGİLER", r"I\.\s*GENEL\s+İLK\s+YARDIM"),
+    ("VÜCUT SİSTEMLERİ", r"II\.\s*VÜCUT\s+SİSTEMLERİ"),
+    ("HASTA TAŞIMA", r"III\.\s*ACİL\s+TAŞIMA"),
+    ("OED (ŞOK CİHAZI)", r"IV\.\s*OTOMATİK\s+EKSTERNAL"),
+    ("TEMEL YAŞAM DESTEĞİ", r"V\.\s*TEMEL\s+YAŞAM"),
+    ("HAVA YOLU TIKANIKLIĞI", r"VI\.\s*HAVA\s+YOLU"),
+    ("BİLİNÇ BOZUKLUKLARI", r"VII\.\s*BİLİNÇ"),
+    ("KANAMALAR", r"VIII\.\s*KANAMA"),
+    ("ŞOK DURUMU", r"IX\.\s*ŞOK\s+VE"),
+    ("YARALANMALAR", r"X\.\s*YARALANMALARDA"),
+    ("BOĞULMALAR", r"XI\.\s*BOĞULMALARDA"),
+    ("KIRIK, ÇIKIK VE BURKULMA", r"XII\.\s*KIRIK,\s*ÇIKIK"), 
+    ("HAYVAN ISIRIKLARI", r"X(II|III)\.\s*HAYVAN\s+ISIRIKLARI"),
+    ("ZEHİRLENMELER", r"XIV\.\s*ZEHİRLENMELERDE"),
+    ("YANIK VE DONMALAR", r"XV\.\s*YANIK,\s*SOĞUK"),
+    ("GÖZ, KULAK, BURUN", r"XVI\.\s*(GÖZ|GÖZE).+YABANCI")
+]
 
-# 1. APP.PY (YÖNETİM ROTALARI DAHİL - EKSİKSİZ)
-app_code = """import os
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import or_
-from datetime import datetime
+def hiyerarsik_formatla(text):
+    if not text: return ""
+    lines = text.split('\n')
+    formatted_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.isdigit(): continue 
+        
+        if re.match(r'^[A-ZĞÜŞİÖÇ]\.\s+', line):
+            formatted_lines.append(f"<h4 class='text-danger mt-4 mb-2 fw-bold'>{line}</h4>")
+        elif re.match(r'^[0-9]+\.\s+', line):
+            formatted_lines.append(f"<h5 class='text-primary mt-3 mb-1 fw-bold'>{line}</h5>")
+        elif line.upper().startswith("DİKKAT") or line.upper().startswith("UYARI"):
+            formatted_lines.append(f"<div class='alert alert-danger d-flex align-items-center mt-2'><i class='ph-bold ph-warning me-2 fs-4'></i> <strong>{line}</strong></div>")
+        elif line.upper().startswith("ÖNEMLİ") or line.upper().startswith("NOT"):
+            formatted_lines.append(f"<div class='alert alert-warning d-flex align-items-center mt-2'><i class='ph-bold ph-info me-2 fs-4'></i> <strong>{line}</strong></div>")
+        elif re.match(r'^[a-z]\)\s+', line) or line.startswith("•") or line.startswith("-"):
+            formatted_lines.append(f"<div class='ms-3 mb-1 text-secondary'><i class='ph-duotone ph-check-circle me-1'></i> {line}</div>")
+        else:
+            formatted_lines.append(f"<p class='mb-2'>{line}</p>")
+    return "\n".join(formatted_lines)
 
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'gizli-anahtar-pro-123'
-app.config['JSON_AS_ASCII'] = False
+def sistemi_duzelt():
+    if not os.path.exists(PDF_DOSYA_ADI):
+        print(f"❌ '{PDF_DOSYA_ADI}' dosyası yok! Lütfen proje klasörüne at.")
+        return
 
-# VERİTABANI BAĞLANTISI
-db_url = os.environ.get("DATABASE_URL")
-if db_url:
-    if db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-
-# MODEL
-class Konu(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    baslik = db.Column(db.String(200), nullable=False)
-    icerik = db.Column(db.Text, nullable=True) 
-    sira = db.Column(db.Integer, default=0)
-    resim = db.Column(db.String(500), nullable=True)
-    eklenme_tarihi = db.Column(db.DateTime, default=datetime.utcnow)
-
-# --- ANA ROTALAR ---
-@app.route('/')
-def index():
+    print("⏳ PDF okunuyor...")
+    tum_metin = ""
     try:
-        konular = Konu.query.order_by(Konu.sira).all()
-        return render_template('index.html', konular=konular)
-    except:
-        return "Veritabani Baglanti Hatasi - Lutfen /kurulum-yap adresine gidin."
+        with pdfplumber.open(PDF_DOSYA_ADI) as pdf:
+            for i in range(BASLANGIC_SAYFASI, len(pdf.pages)):
+                text = pdf.pages[i].extract_text()
+                if text: tum_metin += "\n" + text
+    except Exception as e:
+        print(f"❌ PDF Okuma Hatası: {e}")
+        return
 
-@app.route('/konu/<int:id>')
-def konu_detay(id):
-    konu = Konu.query.get_or_404(id)
-    return render_template('detay.html', konu=konu)
+    with app.app_context():
+        print(f"📡 Veritabanı Hedefi: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        
+        # 1. VERİTABANINI SIFIRLA (En önemli adım burası)
+        # Bu işlem eski bozuk tabloları siler, yenisini (google_id sütunlu) kurar.
+        print("🗑️  Eski veritabanı siliniyor...")
+        db.drop_all()
+        print("🏗️  Yeni tablolar oluşturuluyor...")
+        db.create_all()
+        
+        # 2. ADMİN EKLE
+        print("👤 Admin kullanıcısı (admin/1234) ekleniyor...")
+        admin = User(
+            username='admin', 
+            email='admin@sistem.com', 
+            password=generate_password_hash('1234', method='pbkdf2:sha256'), 
+            is_admin=True,
+            google_id=None # Artık hata vermez
+        )
+        db.session.add(admin)
+        
+        # 3. İÇERİKLERİ YÜKLE
+        print("📚 Kitap içeriği yükleniyor...")
+        for i, (db_baslik_adi, regex_pattern) in enumerate(BASLIK_DESENLERI):
+            sira_no = i + 1
+            match_now = re.search(regex_pattern, tum_metin, re.IGNORECASE)
+            
+            if match_now:
+                start = match_now.start()
+                end = -1
+                if i + 1 < len(BASLIK_DESENLERI):
+                    next_reg = BASLIK_DESENLERI[i+1][1]
+                    match_next = re.search(next_reg, tum_metin, re.IGNORECASE)
+                    if match_next and match_next.start() > start: end = match_next.start()
+                
+                ham = tum_metin[start:end] if end != -1 else tum_metin[start:]
+                split_ic = ham.split('\n', 1)
+                ham = split_ic[1] if len(split_ic) > 1 else ham
+                
+                html = hiyerarsik_formatla(ham)
+                
+                yeni_konu = Konu(sira=sira_no, baslik=db_baslik_adi, icerik=html, resim="")
+                db.session.add(yeni_konu)
+                print(f"✅ Modül {sira_no}: {db_baslik_adi} Eklendi.")
 
-# --- KURULUM ROTASI (TABLOLARI OLUŞTURUR) ---
-@app.route('/kurulum-yap')
-def kurulum():
-    db.create_all()
-    return "Tablolar oluşturuldu/güncellendi."
-
-# --- YÖNETİM PANELİ ROTALARI (404 SORUNU ÇÖZÜMÜ) ---
-@app.route('/yonetim')
-def yonetim_index():
-    konular = Konu.query.order_by(Konu.sira).all()
-    return render_template('admin/index.html', konular=konular)
-
-@app.route('/yonetim/duzenle/<int:id>', methods=['GET', 'POST'])
-def yonetim_duzenle(id):
-    konu = Konu.query.get_or_404(id)
-    if request.method == 'POST':
-        konu.baslik = request.form['baslik']
-        konu.icerik = request.form['icerik']
-        konu.resim = request.form['resim']
         db.session.commit()
-        return redirect(url_for('yonetim_index'))
-    return render_template('admin/duzenle.html', konu=konu)
+        print("\n🎉 İŞLEM TAMAM! Sorun çözüldü.")
+        print("👉 Şimdi 'python app.py' ile siteyi başlat.")
+        print("👉 Giriş Yap: admin / 1234")
+        print("👉 Canlı Aramayı Test Et: 'turnike', 'yanık' vb.")
 
-# --- API ROTALARI (MOBİL İÇİN) ---
-@app.route('/api/konular', methods=['GET'])
-def api_konular():
-    konular = Konu.query.order_by(Konu.sira).all()
-    data = []
-    for k in konular:
-        resim_url = k.resim if k.resim else "https://via.placeholder.com/400x200?text=Resim+Yok"
-        data.append({
-            'id': k.id, 'baslik': k.baslik, 'resim': resim_url, 'sira': k.sira
-        })
-    return jsonify(data)
-
-@app.route('/api/konu/<int:id>', methods=['GET'])
-def api_detay(id):
-    k = Konu.query.get_or_404(id)
-    resim_url = k.resim if k.resim else "https://via.placeholder.com/400x200?text=Resim+Yok"
-    return jsonify({'id': k.id, 'baslik': k.baslik, 'icerik': k.icerik, 'resim': resim_url})
-
-if __name__ == '__main__':
-    app.run(debug=True)
-"""
-
-with open(os.path.join(BASE_DIR, 'app.py'), 'w', encoding='utf-8') as f:
-    f.write(app_code)
-print("✅ app.py (Full Rotalı) yeniden yazıldı.")
-
-
-# 2. ADMIN HTML DOSYALARI (YÖNETİM PANELİ GÖRÜNÜMÜ)
-admin_index_html = """
-{% extends "layout.html" %}
-{% block content %}
-<div class="container mt-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="fa-solid fa-gear text-danger"></i> Yönetim Paneli</h2>
-        <a href="/" class="btn btn-outline-secondary">Siteye Dön</a>
-    </div>
-    <div class="card shadow-sm">
-        <div class="card-body p-0">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Başlık</th>
-                        <th>İşlemler</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for k in konular %}
-                    <tr>
-                        <td>{{ k.sira }}</td>
-                        <td>{{ k.baslik }}</td>
-                        <td>
-                            <a href="{{ url_for('yonetim_duzenle', id=k.id) }}" class="btn btn-sm btn-primary">Düzenle</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-{% endblock %}
-"""
-
-admin_duzenle_html = """
-{% extends "layout.html" %}
-{% block content %}
-<div class="container mt-5">
-    <h3>Konuyu Düzenle</h3>
-    <form method="POST" class="mt-4">
-        <div class="mb-3">
-            <label>Başlık</label>
-            <input type="text" name="baslik" class="form-control" value="{{ konu.baslik }}" required>
-        </div>
-        <div class="mb-3">
-            <label>Resim URL</label>
-            <input type="text" name="resim" class="form-control" value="{{ konu.resim if konu.resim else '' }}">
-            <small class="text-muted">Unsplash veya başka bir yerden resim linki yapıştırın.</small>
-        </div>
-        <div class="mb-3">
-            <label>İçerik (HTML)</label>
-            <textarea name="icerik" class="form-control" rows="10">{{ konu.icerik }}</textarea>
-        </div>
-        <button type="submit" class="btn btn-success">Kaydet</button>
-        <a href="/yonetim" class="btn btn-secondary">İptal</a>
-    </form>
-</div>
-{% endblock %}
-"""
-
-with open(os.path.join(ADMIN_DIR, 'index.html'), 'w', encoding='utf-8') as f:
-    f.write(admin_index_html)
-
-with open(os.path.join(ADMIN_DIR, 'duzenle.html'), 'w', encoding='utf-8') as f:
-    f.write(admin_duzenle_html)
-
-print("✅ Admin HTML şablonları oluşturuldu.")
-
-# 3. GITHUB PUSH
-print("\n🚀 DEĞİŞİKLİKLER GITHUB'A YOLLANIYOR...")
-subprocess.run("git add -A", shell=True)
-subprocess.run('git commit -m "Yonetim Paneli ve Rotalar TAMIR EDILDI"', shell=True)
-subprocess.run("git push", shell=True)
-print("🏁 İşlem tamam. Vercel güncellenince /yonetim sayfası çalışacak.")
+if __name__ == "__main__":
+    sistemi_duzelt()
