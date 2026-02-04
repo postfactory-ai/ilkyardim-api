@@ -5,16 +5,23 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+# Google Login HTTPS Hatası Çözümü için:
+from werkzeug.middleware.proxy_fix import ProxyFix 
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 
 # .env dosyasını yükle
 load_dotenv()
 
-# Google OAuth için HTTPS zorunluluğunu (lokal için) kaldır
+# Google OAuth için (Lokalde http izni)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
+
+# --- KRİTİK AYAR: HTTPS YÖNLENDİRMESİ (RENDER İÇİN) ---
+# Bu satır Google Login'in "Mismatch" hatasını çözer.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gizli-anahtar')
 app.config['JSON_AS_ASCII'] = False
 
@@ -26,7 +33,7 @@ if db_url and db_url.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///local.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Bağlantı Kopma Koruması (Keep-Alive)
+# Bağlantı Kopma Koruması
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_pre_ping": True, 
     "pool_recycle": 300
@@ -85,7 +92,7 @@ class Duyuru(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     baslik = db.Column(db.String(100), nullable=False)
     mesaj = db.Column(db.Text, nullable=False)
-    hedef = db.Column(db.String(100), default='/') # Link: /quiz, /profil vb.
+    hedef = db.Column(db.String(100), default='/') 
     aktif = db.Column(db.Boolean, default=True)
     tarih = db.Column(db.DateTime, server_default=db.func.now())
 
@@ -236,7 +243,6 @@ def yonetim_duyurular():
         db.session.add(yeni_duyuru)
         db.session.commit()
         
-        # Firebase Simülasyonu
         kayitli = Cihaz.query.count()
         print(f"PUSH SENT: {baslik} -> {kayitli} cihaz (Link: {hedef})")
         
@@ -293,7 +299,6 @@ def yonetim_duzenle(id):
 @app.route('/')
 def index():
     konular = Konu.query.order_by(Konu.sira).all()
-    # Ana sayfada son 3 aktif duyuru
     duyurular = Duyuru.query.filter_by(aktif=True).order_by(Duyuru.id.desc()).limit(3).all()
     return render_template('index.html', konular=konular, duyurular=duyurular)
 
@@ -391,38 +396,122 @@ def profil():
 @app.route('/kurulum-yap')
 def kurulum():
     db.create_all()
-    if not User.query.filter_by(username='admin').first():
-        yeni_admin = User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True)
-        db.session.add(yeni_admin)
-        db.session.commit()
-    return "Kurulum Tamamlandı."
-# --- BU KODU app.py DOSYASININ EN ALTINA EKLE ---
-# (if __name__ == '__main__': satırından ÖNCE)
+    return "Kurulum/Veritabani Onarimi Tamam."
+
+# ==========================================
+#     İÇERİK KURTARMA VE DÜZELTME
+# ==========================================
 
 @app.route('/icerik-yukle')
 def icerik_yukle():
-    # 1. Konular zaten var mı bak?
-    if Konu.query.count() > 0:
-        return "⚠️ Konular zaten yüklü! Tekrar yüklenmedi."
-
-    # 2. İçerik Listesi (Senin Müfredatın)
+    # 1. ÖNCE TEMİZLİK
+    eski_konular = Konu.query.all()
+    for k in eski_konular:
+        db.session.delete(k)
+    db.session.commit()
+    
+    # 2. DOLU VE INDEX UYUMLU İÇERİK
     konu_listesi = [
-        {"sira": 1, "baslik": "Genel İlkyardım Bilgileri", "resim": "https://images.unsplash.com/photo-1516574187841-693019951ac4?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>İlkyardım Nedir?</h4><p>Herhangi bir kaza veya yaşamı tehlikeye düşüren bir durumda, sağlık görevlileri yardıma gelinceye kadar hayatın kurtarılması ya da durumun kötüye gitmesini önleyebilmek amacı ile olay yerinde, tıbbi araç gereç aranmaksızın, mevcut araç ve gereçlerle yapılan ilaçsız uygulamalardır.</p><h5>Acil Tedavi Nedir?</h5><p>Acil tedavi ünitelerinde, hasta/yaralılara doktor ve sağlık personeli tarafından yapılan tıbbi müdahalelerdir.</p>"},
-        {"sira": 2, "baslik": "Hasta/Yaralı ve Olay Yerinin Değerlendirilmesi", "resim": "https://images.unsplash.com/photo-1583324113626-70df0f4deaab?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Olay Yerini Değerlendirme</h4><p>Olay yerinde tekrar kaza olma riskinin ortadan kaldırılması, olay yerindeki hasta/yaralı sayısının ve türlerinin belirlenmesi işlemidir.</p>"},
-        {"sira": 3, "baslik": "İnsan Vücudu Genel Bilgileri", "resim": "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Vücut Sistemleri</h4><p>Hareket sistemi, dolaşım sistemi, sinir sistemi, solunum sistemi, boşaltım sistemi ve sindirim sistemi hakkında temel bilgiler.</p>"},
-        {"sira": 4, "baslik": "Temel Yaşam Desteği (Yetişkin-Çocuk-Bebek)", "resim": "https://images.unsplash.com/photo-1616763355603-9755a640a287?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Kalp Masajı ve Suni Solunum</h4><p>Solunumu ve kalbi durmuş kişiye hayati fonksiyonlarını geri kazandırmak için yapılan uygulamalar bütünüdür. 30 Kalp masajı 2 suni solunum şeklinde uygulanır.</p>"},
-        {"sira": 5, "baslik": "Kanamalarda İlkyardım", "resim": "https://plus.unsplash.com/premium_photo-1661766569022-1b7f918ac3f3?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Kanama Çeşitleri</h4><p>Damar bütünlüğünün bozulması sonucu kanın damar dışına (vücut içine veya dışına) doğru akmasıdır. İç kanama, dış kanama ve doğal deliklerden olan kanamalar olarak ayrılır.</p>"},
-        {"sira": 6, "baslik": "Yaralanmalarda İlkyardım", "resim": "https://images.unsplash.com/photo-1527137342181-191fab9473b7?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Yara Çeşitleri</h4><p>Kesik yara, ezik yara, delici yara, parçalı yara ve kirli (enfekte) yaralar. Yaralanmalarda tetanos tehlikesi unutulmamalıdır.</p>"},
-        {"sira": 7, "baslik": "Yanık, Donma ve Sıcak Çarpmalarında İlkyardım", "resim": "https://images.unsplash.com/photo-1544367563-12123d8965cd?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Yanık Dereceleri</h4><p>1. Derece: Deride kızarıklık, ağrı. <br>2. Derece: Deride içi su dolu kabarcıklar (bül). <br>3. Derece: Derinin tüm tabakaları etkilenir.</p>"},
-        {"sira": 8, "baslik": "Kırık, Çıkık ve Burkulmalarda İlkyardım", "resim": "https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Hareket Sistemi Yaralanmaları</h4><p>Kırık: Kemik bütünlüğünün bozulmasıdır.<br>Çıkık: Eklem yüzeylerinin kalıcı olarak ayrılmasıdır.<br>Burkulma: Eklem yüzeylerinin anlık olarak ayrılmasıdır.</p>"},
-        {"sira": 9, "baslik": "Bilinç Bozukluklarında İlkyardım", "resim": "https://images.unsplash.com/photo-1518152006812-edab29b069ac?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Bayılma ve Koma</h4><p>Bayılma (Senkop): Kısa süreli bilinç kaybı.<br>Koma: Yutkunma, öksürük gibi reflekslerin ve dışarıdan gelen uyarılara karşı tepkinin azalması ya da yok olması ile ortaya çıkan uzun süreli bilinç kaybıdır.</p>"},
-        {"sira": 10, "baslik": "Zehirlenmelerde İlkyardım", "resim": "https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Zehirlenme Yolları</h4><p>Sindirim yoluyla, solunum yoluyla ve deri yoluyla zehirlenmeler. 114 UZEM (Ulusal Zehir Danışma Merkezi) aranmalıdır.</p>"},
-        {"sira": 11, "baslik": "Hayvan Isırmalarında İlkyardım", "resim": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Kedi-Köpek Isırmaları</h4><p>Hafif yaralanmalarda yara 5 dakika süreyle sabun ve soğuk suyla yıkanır. Yaranın üstü temiz bir bezle kapatılır.</p>"},
-        {"sira": 12, "baslik": "Göz, Kulak ve Buruna Yabancı Cisim Kaçması", "resim": "https://images.unsplash.com/photo-1506477331477-33d5d8b3dc85?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Göze Cisim Kaçması</h4><p>Toz gibi küçük cisimse: Gözü ışığa çevirin, alt göz kapağını içine bakın, nemli bezle alın. Asla ovuşturulmaz!</p>"},
-        {"sira": 13, "baslik": "Boğulmalarda İlkyardım", "resim": "https://images.unsplash.com/photo-1531168556467-80aace0d0144?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Suda Boğulma</h4><p>Boğulma sırasında nefes borusuna su kaçması sonucu akciğerlere hava giremez. Hemen sudan çıkarılıp Temel Yaşam Desteği uygulanmalıdır.</p>"},
-        {"sira": 14, "baslik": "Hasta/Yaralı Taşıma Teknikleri", "resim": "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Genel Kurallar</h4><p>Hasta/yaralı mümkün olduğunca yerinden kıpırdatılmamalıdır. Baş-boyun-gövde ekseni bozulmamalıdır.</p>"},
-        {"sira": 15, "baslik": "OED (Otomatik Eksternal Defibrilatör) Kullanımı", "resim": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>OED Nedir?</h4><p>Kalbi durmuş olan hastaya elektroşok vererek kalbin yeniden çalışmasını sağlayan hayat kurtarıcı bir cihazdır.</p>"},
-        {"sira": 16, "baslik": "Afetlerde İlkyardım ve Triyaj", "resim": "https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?auto=format&fit=crop&q=80&w=600", "icerik": "<h4>Triyaj Nedir?</h4><p>Çok sayıda yaralının olduğu durumlarda, yaralıların öncelik durumlarına göre sınıflandırılması işlemidir.</p>"}
+        {
+            "sira": 1, 
+            "baslik": "Genel İlkyardım Bilgileri", 
+            "resim": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=800", 
+            "icerik": """
+                <h4>İlkyardım Nedir?</h4>
+                <p>Herhangi bir kaza veya yaşamı tehlikeye düşüren bir durumda, sağlık görevlileri yardıma gelinceye kadar hayatın kurtarılması ya da durumun kötüye gitmesini önleyebilmek amacı ile olay yerinde, tıbbi araç gereç aranmaksızın, mevcut araç ve gereçlerle yapılan ilaçsız uygulamalardır.</p>
+                <h4>İlkyardımcının Özellikleri</h4>
+                <ul>
+                    <li>İnsan vücudu ile ilgili temel bilgilere sahip olmalı,</li>
+                    <li>Sakin, kendine güvenen ve pratik olmalı,</li>
+                    <li>Eldeki olanakları değerlendirebilmeli,</li>
+                    <li>Olayı anında ve doğru olarak haber vermeli (112),</li>
+                    <li>Çevredeki kişileri organize edebilmelidir.</li>
+                </ul>
+                <h5>Hayat Kurtarma Zinciri</h5>
+                <p>1. Halka: Sağlık kuruluşuna haber verme (112).</p>
+                <p>2. Halka: Olay yerinde temel yaşam desteği yapılması.</p>
+                <p>3. Halka: Ambulans ekiplerince müdahaleler yapılması.</p>
+                <p>4. Halka: Hastane acil servislerinde müdahale yapılması.</p>
+            """
+        },
+        {
+            "sira": 2, 
+            "baslik": "Olay Yerinin Değerlendirilmesi", 
+            "resim": "https://images.unsplash.com/photo-1588776813186-643d3999da05?auto=format&fit=crop&q=80&w=800", 
+            "icerik": """
+                <h4>Olay Yerini Değerlendirme</h4>
+                <p>Tekrar kaza olma riskinin ortadan kaldırılması ve hasta/yaralı sayısının belirlenmesidir.</p>
+                <h4>Olay Yerinde Yapılacaklar</h4>
+                <ul>
+                    <li>Kaza yeri işaretlenmelidir (Reflektör vb).</li>
+                    <li>Meraklı kişiler uzaklaştırılmalıdır.</li>
+                    <li>Patlama/yangın riskine karşı önlemler alınmalıdır.</li>
+                    <li>Hasta/yaralı yerinden oynatılmamalıdır.</li>
+                </ul>
+                <h5>112 Aranırken Nelere Dikkat Edilmeli?</h5>
+                <p>Sakin olunmalı, adres net verilmeli, hasta sayısı ve durumları bildirilmelidir.</p>
+            """
+        },
+        {
+            "sira": 3,
+            "baslik": "Temel Yaşam Desteği (TYD)",
+            "resim": "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&q=80&w=800",
+            "icerik": """
+                <h4>Temel Yaşam Desteği Nedir?</h4>
+                <p>Solunumu ve/veya kalbi durmuş kişiye hayati fonksiyonlarını geri kazandırmak için yapılan uygulamalardır.</p>
+                <h4>Hava Yolu Açıklığı</h4>
+                <p>Baş-Çene pozisyonu verilerek hava yolu açılır.</p>
+                <h4>Dış Kalp Masajı ve Suni Solunum</h4>
+                <p>Yetişkinlerde <strong>30 Kalp Masajı - 2 Suni Solunum</strong> döngüsüyle uygulanır.</p>
+                <h5>Çocuklarda ve Bebeklerde</h5>
+                <p>Çocuklarda tek elle, bebeklerde iki parmakla kalp masajı yapılır.</p>
+            """
+        },
+        {
+            "sira": 4, "baslik": "Kanamalarda İlkyardım", 
+            "resim": "https://images.unsplash.com/photo-1628102491629-778571d893a3?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Kanama Nedir?</h4><p>Damar bütünlüğünün bozulmasıdır.</p><h4>Dış Kanamalarda İlkyardım</h4><p>Yara üzerine temiz bezle baskı uygulanır. Kanama durmazsa ikinci bez konur. Uzuv kopması varsa turnike uygulanır.</p>"
+        },
+        {
+            "sira": 5, "baslik": "Yanıklarda İlkyardım", 
+            "resim": "https://images.unsplash.com/photo-1624727828489-a1e03b79bba8?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Yanık Nedir?</h4><p>Isı, elektrik, kimyasal madde vb. etkisiyle doku bozulmasıdır.</p><h4>İlkyardım</h4><p>Yanık bölge en az 20 dakika tazyiksiz su altına tutulur. Asla diş macunu, yoğurt vb. sürülmez.</p>"
+        },
+         {
+            "sira": 6, "baslik": "Kırık, Çıkık ve Burkulma", 
+            "resim": "https://images.unsplash.com/photo-1584515933487-9bfa0024220b?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Kırık Belirtileri</h4><p>Ağrı, şişlik, şekil bozukluğu.</p><h4>İlkyardım</h4><p>Hareket ettirilmez, tespit edilir (sabitlenir). Açık kırık varsa yara temiz bezle kapatılır.</p>"
+        },
+         {
+            "sira": 7, "baslik": "Bilinç Bozuklukları", 
+            "resim": "https://images.unsplash.com/photo-1516574187841-693019951ac4?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Bayılma</h4><p>Kısa süreli bilinç kaybı.</p><h4>Koma</h4><p>Uzun süreli bilinç kaybı. Koma pozisyonu (yarı yüzükoyun yan yatış) verilir.</p>"
+        },
+         {
+            "sira": 8, "baslik": "Zehirlenmeler", 
+            "resim": "https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Sindirim Yoluyla</h4><p>Kusturulmaz (yakıcı maddeyse), 114 aranır.</p><h4>Solunum Yoluyla</h4><p>Temiz havaya çıkarılır.</p>"
+        },
+         {
+            "sira": 9, "baslik": "Hayvan Isırmaları", 
+            "resim": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Kedi-Köpek Isırması</h4><p>Yara 5 dakika sabunlu suyla yıkanır. Kuduz aşısı için sağlık kuruluşuna gidilir.</p>"
+        },
+        {
+            "sira": 10, "baslik": "Göze Yabancı Cisim", 
+            "resim": "https://images.unsplash.com/photo-1506477331477-33d5d8b3dc85?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Toz Kaçması</h4><p>Göz ovuşturulmaz, bol su ile yıkanır veya nemli bezle alınır.</p><h4>Batan Cisim</h4><p>Asla çıkarılmaya çalışılmaz, her iki göz kapatılarak hastaneye sevk edilir.</p>"
+        },
+        {
+            "sira": 11, "baslik": "Boğulmalar", 
+            "resim": "https://images.unsplash.com/photo-1531168556467-80aace0d0144?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Suda Boğulma</h4><p>Sudan çıkarılır, solunum kontrol edilir. Gerekirse Temel Yaşam Desteği başlanır.</p>"
+        },
+        {
+            "sira": 12, "baslik": "Taşıma Teknikleri", 
+            "resim": "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&q=80&w=800", 
+            "icerik": "<h4>Genel Kural</h4><p>Mümkünse hasta taşınmaz. Taşınacaksa baş-boyun-gövde ekseni korunur.</p><h4>Sürükleme Yöntemi</h4><p>Dar alanlarda veya hasta çok kiloluysa kullanılır.</p>"
+        }
     ]
 
     for data in konu_listesi:
@@ -434,29 +523,29 @@ def icerik_yukle():
         )
         db.session.add(yeni_konu)
 
-    # 3. Admin Kullanıcısını Garantiye Al
+    # Admin Kontrolü
     admin = User.query.filter_by(username='admin').first()
     if not admin:
         yeni_admin = User(
             username='admin', 
             email='admin@sistem.com', 
-            # DİKKAT: Şifre varsayılan olarak '1234' ayarlanıyor
             password=generate_password_hash('1234', method='pbkdf2:sha256'), 
             is_admin=True
         )
         db.session.add(yeni_admin)
-        print("Admin oluşturuldu: 1234")
-    else:
-        # Mevcut admin varsa şifresini '1234'e sıfırla ki giriş yapabil
-        admin.password = generate_password_hash('1234', method='pbkdf2:sha256')
-        print("Admin şifresi '1234' olarak güncellendi.")
+        print("Admin oluşturuldu.")
 
     db.session.commit()
+    
     return """
-    <h1 style='color:green; text-align:center;'>✅ İÇERİKLER YÜKLENDİ!</h1>
-    <p style='text-align:center;'>16 Adet Konu Veritabanına Yazıldı.</p>
-    <p style='text-align:center;'>Admin Şifresi: <b>1234</b> olarak ayarlandı.</p>
-    <p style='text-align:center;'><a href='/'>Ana Sayfaya Dön</a></p>
-    """        
+    <div style='text-align:center; padding:50px; font-family:sans-serif;'>
+        <h1 style='color:#2ecc71; font-size:3em;'>✅ TAMİR EDİLDİ!</h1>
+        <p style='font-size:1.5em;'>Eski, bozuk veriler silindi.</p>
+        <p style='font-size:1.5em;'>Yeni, HTML formatlı ve Index uyumlu veriler yüklendi.</p>
+        <br>
+        <a href='/' style='background:#3498db; color:white; padding:15px 30px; text-decoration:none; border-radius:5px;'>SİTEYE DÖN</a>
+    </div>
+    """
+
 if __name__ == '__main__':
     app.run(debug=True)
