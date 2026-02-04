@@ -5,7 +5,6 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-# Google Login HTTPS Hatası Çözümü için:
 from werkzeug.middleware.proxy_fix import ProxyFix 
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
@@ -13,13 +12,12 @@ from dotenv import load_dotenv
 # .env dosyasını yükle
 load_dotenv()
 
-# Google OAuth için (Lokalde http izni)
+# Google OAuth için HTTPS zorunluluğunu (lokal için) kaldır
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 
-# --- KRİTİK AYAR: HTTPS YÖNLENDİRMESİ (RENDER İÇİN) ---
-# Bu satır Google Login'in "Mismatch" hatasını çözer.
+# --- RENDER HTTPS AYARI (Bunu sakın silme, Google Girişi buna bağlı) ---
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gizli-anahtar')
@@ -81,10 +79,7 @@ class Soru(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     konu_id = db.Column(db.Integer, db.ForeignKey('konu.id'), nullable=False)
     soru_metni = db.Column(db.Text, nullable=False)
-    a = db.Column(db.String(200), nullable=False)
-    b = db.Column(db.String(200), nullable=False)
-    c = db.Column(db.String(200), nullable=False)
-    d = db.Column(db.String(200), nullable=False)
+    a, b, c, d = db.Column(db.String(200)), db.Column(db.String(200)), db.Column(db.String(200)), db.Column(db.String(200))
     dogru_cevap = db.Column(db.String(1), nullable=False)
 
 class Duyuru(db.Model):
@@ -92,7 +87,7 @@ class Duyuru(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     baslik = db.Column(db.String(100), nullable=False)
     mesaj = db.Column(db.Text, nullable=False)
-    hedef = db.Column(db.String(100), default='/') 
+    hedef = db.Column(db.String(100), default='/')
     aktif = db.Column(db.Boolean, default=True)
     tarih = db.Column(db.DateTime, server_default=db.func.now())
 
@@ -116,7 +111,8 @@ def load_user(user_id):
 @app.route('/api/konular')
 def api_get_konular():
     konular = Konu.query.order_by(Konu.sira).all()
-    data = [{'id': k.id, 'baslik': k.baslik, 'sira': k.sira, 'resim': k.resim} for k in konular]
+    # Resim göndermiyoruz (None)
+    data = [{'id': k.id, 'baslik': k.baslik, 'sira': k.sira, 'resim': None} for k in konular]
     return jsonify(data)
 
 @app.route('/api/konu/<int:id>')
@@ -126,7 +122,7 @@ def api_get_konu_detay(id):
         'id': konu.id,
         'baslik': konu.baslik,
         'icerik': konu.icerik,
-        'resim': konu.resim,
+        'resim': None, # Resim yok
         'sira': konu.sira
     })
 
@@ -192,7 +188,6 @@ def yonetim_hesap():
     if request.method == 'POST':
         islem = request.form.get('islem_turu')
         
-        # 1. ŞİFRE DEĞİŞTİRME
         if islem == 'sifre_degistir':
             eski_sifre = request.form.get('eski_sifre')
             yeni_sifre = request.form.get('yeni_sifre')
@@ -206,7 +201,6 @@ def yonetim_hesap():
                 db.session.commit()
                 flash('✅ Şifre güncellendi.', 'success')
         
-        # 2. YENİ ADMİN EKLEME
         elif islem == 'admin_ekle':
             kadi = request.form.get('kadi')
             email = request.form.get('email')
@@ -215,11 +209,7 @@ def yonetim_hesap():
             if User.query.filter((User.username==kadi) | (User.email==email)).first():
                 flash('⚠️ Kullanıcı zaten var.', 'warning')
             else:
-                yeni_admin = User(
-                    username=kadi, email=email, 
-                    password=generate_password_hash(sifre, method='pbkdf2:sha256'),
-                    is_admin=True
-                )
+                yeni_admin = User(username=kadi, email=email, password=generate_password_hash(sifre, method='pbkdf2:sha256'), is_admin=True)
                 db.session.add(yeni_admin)
                 db.session.commit()
                 flash(f'🎉 {kadi} admin olarak eklendi!', 'success')
@@ -344,7 +334,7 @@ def kayit_ol():
         email = request.form.get('email')
         sifre = request.form.get('password')
         if User.query.filter((User.username==kadi) | (User.email==email)).first():
-            flash('Kullanıcı zaten var.', 'warning')
+            flash('Kullanıcı mevcut.', 'warning')
             return redirect(url_for('kayit_ol'))
         hashed_pw = generate_password_hash(sifre, method='pbkdf2:sha256')
         yeni_user = User(username=kadi, email=email, password=hashed_pw)
@@ -396,29 +386,31 @@ def profil():
 @app.route('/kurulum-yap')
 def kurulum():
     db.create_all()
-    return "Kurulum/Veritabani Onarimi Tamam."
+    return "Kurulum/Onarim Tamam."
 
 # ==========================================
-#     İÇERİK KURTARMA VE DÜZELTME
+#     İÇERİK YÜKLEYİCİ (RESİMSİZ & FULL)
 # ==========================================
 
 @app.route('/icerik-yukle')
 def icerik_yukle():
-    # 1. ÖNCE TEMİZLİK
+    # Temizlik
     eski_konular = Konu.query.all()
     for k in eski_konular:
         db.session.delete(k)
     db.session.commit()
     
-    # 2. DOLU VE INDEX UYUMLU İÇERİK
+    # RESİMSİZ, FULL METİN İÇERİĞİ
     konu_listesi = [
         {
             "sira": 1, 
             "baslik": "Genel İlkyardım Bilgileri", 
-            "resim": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=800", 
+            "resim": None, # Görsel yok
             "icerik": """
                 <h4>İlkyardım Nedir?</h4>
                 <p>Herhangi bir kaza veya yaşamı tehlikeye düşüren bir durumda, sağlık görevlileri yardıma gelinceye kadar hayatın kurtarılması ya da durumun kötüye gitmesini önleyebilmek amacı ile olay yerinde, tıbbi araç gereç aranmaksızın, mevcut araç ve gereçlerle yapılan ilaçsız uygulamalardır.</p>
+                <h4>Acil Tedavi Nedir?</h4>
+                <p>Acil tedavi ünitelerinde, hasta/yaralılara doktor ve sağlık personeli tarafından yapılan tıbbi müdahalelerdir. İlkyardım ile acil tedavi arasındaki fark; ilkyardım olay yerinde ilaçsız yapılır, acil tedavi hastanede ilaçlı ve tıbbi donanımla yapılır.</p>
                 <h4>İlkyardımcının Özellikleri</h4>
                 <ul>
                     <li>İnsan vücudu ile ilgili temel bilgilere sahip olmalı,</li>
@@ -437,7 +429,7 @@ def icerik_yukle():
         {
             "sira": 2, 
             "baslik": "Olay Yerinin Değerlendirilmesi", 
-            "resim": "https://images.unsplash.com/photo-1588776813186-643d3999da05?auto=format&fit=crop&q=80&w=800", 
+            "resim": None,
             "icerik": """
                 <h4>Olay Yerini Değerlendirme</h4>
                 <p>Tekrar kaza olma riskinin ortadan kaldırılması ve hasta/yaralı sayısının belirlenmesidir.</p>
@@ -455,7 +447,7 @@ def icerik_yukle():
         {
             "sira": 3,
             "baslik": "Temel Yaşam Desteği (TYD)",
-            "resim": "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&q=80&w=800",
+            "resim": None,
             "icerik": """
                 <h4>Temel Yaşam Desteği Nedir?</h4>
                 <p>Solunumu ve/veya kalbi durmuş kişiye hayati fonksiyonlarını geri kazandırmak için yapılan uygulamalardır.</p>
@@ -468,49 +460,56 @@ def icerik_yukle():
             """
         },
         {
-            "sira": 4, "baslik": "Kanamalarda İlkyardım", 
-            "resim": "https://images.unsplash.com/photo-1628102491629-778571d893a3?auto=format&fit=crop&q=80&w=800", 
+            "sira": 4, "baslik": "Kanamalarda İlkyardım", "resim": None,
             "icerik": "<h4>Kanama Nedir?</h4><p>Damar bütünlüğünün bozulmasıdır.</p><h4>Dış Kanamalarda İlkyardım</h4><p>Yara üzerine temiz bezle baskı uygulanır. Kanama durmazsa ikinci bez konur. Uzuv kopması varsa turnike uygulanır.</p>"
         },
         {
-            "sira": 5, "baslik": "Yanıklarda İlkyardım", 
-            "resim": "https://images.unsplash.com/photo-1624727828489-a1e03b79bba8?auto=format&fit=crop&q=80&w=800", 
+            "sira": 5, "baslik": "Yanıklarda İlkyardım", "resim": None,
             "icerik": "<h4>Yanık Nedir?</h4><p>Isı, elektrik, kimyasal madde vb. etkisiyle doku bozulmasıdır.</p><h4>İlkyardım</h4><p>Yanık bölge en az 20 dakika tazyiksiz su altına tutulur. Asla diş macunu, yoğurt vb. sürülmez.</p>"
         },
          {
-            "sira": 6, "baslik": "Kırık, Çıkık ve Burkulma", 
-            "resim": "https://images.unsplash.com/photo-1584515933487-9bfa0024220b?auto=format&fit=crop&q=80&w=800", 
+            "sira": 6, "baslik": "Kırık, Çıkık ve Burkulma", "resim": None,
             "icerik": "<h4>Kırık Belirtileri</h4><p>Ağrı, şişlik, şekil bozukluğu.</p><h4>İlkyardım</h4><p>Hareket ettirilmez, tespit edilir (sabitlenir). Açık kırık varsa yara temiz bezle kapatılır.</p>"
         },
          {
-            "sira": 7, "baslik": "Bilinç Bozuklukları", 
-            "resim": "https://images.unsplash.com/photo-1516574187841-693019951ac4?auto=format&fit=crop&q=80&w=800", 
+            "sira": 7, "baslik": "Bilinç Bozuklukları", "resim": None,
             "icerik": "<h4>Bayılma</h4><p>Kısa süreli bilinç kaybı.</p><h4>Koma</h4><p>Uzun süreli bilinç kaybı. Koma pozisyonu (yarı yüzükoyun yan yatış) verilir.</p>"
         },
          {
-            "sira": 8, "baslik": "Zehirlenmeler", 
-            "resim": "https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?auto=format&fit=crop&q=80&w=800", 
+            "sira": 8, "baslik": "Zehirlenmeler", "resim": None,
             "icerik": "<h4>Sindirim Yoluyla</h4><p>Kusturulmaz (yakıcı maddeyse), 114 aranır.</p><h4>Solunum Yoluyla</h4><p>Temiz havaya çıkarılır.</p>"
         },
          {
-            "sira": 9, "baslik": "Hayvan Isırmaları", 
-            "resim": "https://images.unsplash.com/photo-1535930749574-1399327ce78f?auto=format&fit=crop&q=80&w=800", 
+            "sira": 9, "baslik": "Hayvan Isırmaları", "resim": None,
             "icerik": "<h4>Kedi-Köpek Isırması</h4><p>Yara 5 dakika sabunlu suyla yıkanır. Kuduz aşısı için sağlık kuruluşuna gidilir.</p>"
         },
         {
-            "sira": 10, "baslik": "Göze Yabancı Cisim", 
-            "resim": "https://images.unsplash.com/photo-1506477331477-33d5d8b3dc85?auto=format&fit=crop&q=80&w=800", 
+            "sira": 10, "baslik": "Göze Yabancı Cisim", "resim": None,
             "icerik": "<h4>Toz Kaçması</h4><p>Göz ovuşturulmaz, bol su ile yıkanır veya nemli bezle alınır.</p><h4>Batan Cisim</h4><p>Asla çıkarılmaya çalışılmaz, her iki göz kapatılarak hastaneye sevk edilir.</p>"
         },
         {
-            "sira": 11, "baslik": "Boğulmalar", 
-            "resim": "https://images.unsplash.com/photo-1531168556467-80aace0d0144?auto=format&fit=crop&q=80&w=800", 
+            "sira": 11, "baslik": "Boğulmalar", "resim": None,
             "icerik": "<h4>Suda Boğulma</h4><p>Sudan çıkarılır, solunum kontrol edilir. Gerekirse Temel Yaşam Desteği başlanır.</p>"
         },
         {
-            "sira": 12, "baslik": "Taşıma Teknikleri", 
-            "resim": "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&q=80&w=800", 
+            "sira": 12, "baslik": "Taşıma Teknikleri", "resim": None,
             "icerik": "<h4>Genel Kural</h4><p>Mümkünse hasta taşınmaz. Taşınacaksa baş-boyun-gövde ekseni korunur.</p><h4>Sürükleme Yöntemi</h4><p>Dar alanlarda veya hasta çok kiloluysa kullanılır.</p>"
+        },
+        {
+            "sira": 13, "baslik": "Olay Yeri", "resim": None,
+            "icerik": "<h4>Güvenlik</h4><p>Önce kendi can güvenliğini sağla.</p>"
+        },
+        {
+            "sira": 14, "baslik": "İnsan Vücudu", "resim": None,
+            "icerik": "<h4>Sistemler</h4><p>Hareket, dolaşım, solunum...</p>"
+        },
+        {
+            "sira": 15, "baslik": "OED (Otomatik Şok)", "resim": None,
+            "icerik": "<h4>Kullanımı</h4><p>Cihaz sesli komut verir. Pedler yapıştırılır.</p>"
+        },
+        {
+            "sira": 16, "baslik": "Afetlerde Triyaj", "resim": None,
+            "icerik": "<h4>Renk Kodları</h4><p>Kırmızı, Sarı, Yeşil, Siyah.</p>"
         }
     ]
 
@@ -519,31 +518,24 @@ def icerik_yukle():
             sira=data["sira"],
             baslik=data["baslik"],
             icerik=data["icerik"],
-            resim=data["resim"]
+            resim=None 
         )
         db.session.add(yeni_konu)
 
-    # Admin Kontrolü
     admin = User.query.filter_by(username='admin').first()
     if not admin:
-        yeni_admin = User(
-            username='admin', 
-            email='admin@sistem.com', 
-            password=generate_password_hash('1234', method='pbkdf2:sha256'), 
-            is_admin=True
-        )
+        yeni_admin = User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True)
         db.session.add(yeni_admin)
-        print("Admin oluşturuldu.")
 
     db.session.commit()
     
     return """
     <div style='text-align:center; padding:50px; font-family:sans-serif;'>
-        <h1 style='color:#2ecc71; font-size:3em;'>✅ TAMİR EDİLDİ!</h1>
-        <p style='font-size:1.5em;'>Eski, bozuk veriler silindi.</p>
-        <p style='font-size:1.5em;'>Yeni, HTML formatlı ve Index uyumlu veriler yüklendi.</p>
+        <h1 style='color:#2ecc71;'>✅ İÇERİKLER YÜKLENDİ!</h1>
+        <p>Resim: KULLANILMIYOR (None)</p>
+        <p>İçerik: DOLU DOLU (Full HTML)</p>
         <br>
-        <a href='/' style='background:#3498db; color:white; padding:15px 30px; text-decoration:none; border-radius:5px;'>SİTEYE DÖN</a>
+        <a href='/' style='background:#3498db; color:white; padding:15px; text-decoration:none;'>SİTEYE DÖN</a>
     </div>
     """
 
