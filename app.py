@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
@@ -17,7 +18,7 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 
-# --- RENDER HTTPS AYARI (Bunu sakın silme, Google Girişi buna bağlı) ---
+# --- RENDER HTTPS AYARI (Google Girişinin Bozulmaması İçin Şart) ---
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gizli-anahtar')
@@ -122,7 +123,7 @@ def api_get_konu_detay(id):
         'id': konu.id,
         'baslik': konu.baslik,
         'icerik': konu.icerik,
-        'resim': None, # Resim yok
+        'resim': None,
         'sira': konu.sira
     })
 
@@ -366,7 +367,7 @@ def google_authorize():
                 db.session.add(user)
                 db.session.commit()
         login_user(user)
-        flash('Başarıyla giriş yapıldı!', 'success')
+        flash('Başarılı giriş.', 'success')
         return redirect(url_for('index'))
     except Exception as e:
         flash(f"Google Hata: {str(e)}", 'danger')
@@ -389,155 +390,70 @@ def kurulum():
     return "Kurulum/Onarim Tamam."
 
 # ==========================================
-#     İÇERİK YÜKLEYİCİ (RESİMSİZ & FULL)
+#     İÇERİK YÜKLEYİCİ (AJAN MOD - DETAYLI)
 # ==========================================
 
 @app.route('/icerik-yukle')
 def icerik_yukle():
-    # Temizlik
-    eski_konular = Konu.query.all()
-    for k in eski_konular:
-        db.session.delete(k)
-    db.session.commit()
+    rapor = [] 
     
-    # RESİMSİZ, FULL METİN İÇERİĞİ
-    konu_listesi = [
-        {
-            "sira": 1, 
-            "baslik": "Genel İlkyardım Bilgileri", 
-            "resim": None, # Görsel yok
-            "icerik": """
-                <h4>İlkyardım Nedir?</h4>
-                <p>Herhangi bir kaza veya yaşamı tehlikeye düşüren bir durumda, sağlık görevlileri yardıma gelinceye kadar hayatın kurtarılması ya da durumun kötüye gitmesini önleyebilmek amacı ile olay yerinde, tıbbi araç gereç aranmaksızın, mevcut araç ve gereçlerle yapılan ilaçsız uygulamalardır.</p>
-                <h4>Acil Tedavi Nedir?</h4>
-                <p>Acil tedavi ünitelerinde, hasta/yaralılara doktor ve sağlık personeli tarafından yapılan tıbbi müdahalelerdir. İlkyardım ile acil tedavi arasındaki fark; ilkyardım olay yerinde ilaçsız yapılır, acil tedavi hastanede ilaçlı ve tıbbi donanımla yapılır.</p>
-                <h4>İlkyardımcının Özellikleri</h4>
-                <ul>
-                    <li>İnsan vücudu ile ilgili temel bilgilere sahip olmalı,</li>
-                    <li>Sakin, kendine güvenen ve pratik olmalı,</li>
-                    <li>Eldeki olanakları değerlendirebilmeli,</li>
-                    <li>Olayı anında ve doğru olarak haber vermeli (112),</li>
-                    <li>Çevredeki kişileri organize edebilmelidir.</li>
-                </ul>
-                <h5>Hayat Kurtarma Zinciri</h5>
-                <p>1. Halka: Sağlık kuruluşuna haber verme (112).</p>
-                <p>2. Halka: Olay yerinde temel yaşam desteği yapılması.</p>
-                <p>3. Halka: Ambulans ekiplerince müdahaleler yapılması.</p>
-                <p>4. Halka: Hastane acil servislerinde müdahale yapılması.</p>
-            """
-        },
-        {
-            "sira": 2, 
-            "baslik": "Olay Yerinin Değerlendirilmesi", 
-            "resim": None,
-            "icerik": """
-                <h4>Olay Yerini Değerlendirme</h4>
-                <p>Tekrar kaza olma riskinin ortadan kaldırılması ve hasta/yaralı sayısının belirlenmesidir.</p>
-                <h4>Olay Yerinde Yapılacaklar</h4>
-                <ul>
-                    <li>Kaza yeri işaretlenmelidir (Reflektör vb).</li>
-                    <li>Meraklı kişiler uzaklaştırılmalıdır.</li>
-                    <li>Patlama/yangın riskine karşı önlemler alınmalıdır.</li>
-                    <li>Hasta/yaralı yerinden oynatılmamalıdır.</li>
-                </ul>
-                <h5>112 Aranırken Nelere Dikkat Edilmeli?</h5>
-                <p>Sakin olunmalı, adres net verilmeli, hasta sayısı ve durumları bildirilmelidir.</p>
-            """
-        },
-        {
-            "sira": 3,
-            "baslik": "Temel Yaşam Desteği (TYD)",
-            "resim": None,
-            "icerik": """
-                <h4>Temel Yaşam Desteği Nedir?</h4>
-                <p>Solunumu ve/veya kalbi durmuş kişiye hayati fonksiyonlarını geri kazandırmak için yapılan uygulamalardır.</p>
-                <h4>Hava Yolu Açıklığı</h4>
-                <p>Baş-Çene pozisyonu verilerek hava yolu açılır.</p>
-                <h4>Dış Kalp Masajı ve Suni Solunum</h4>
-                <p>Yetişkinlerde <strong>30 Kalp Masajı - 2 Suni Solunum</strong> döngüsüyle uygulanır.</p>
-                <h5>Çocuklarda ve Bebeklerde</h5>
-                <p>Çocuklarda tek elle, bebeklerde iki parmakla kalp masajı yapılır.</p>
-            """
-        },
-        {
-            "sira": 4, "baslik": "Kanamalarda İlkyardım", "resim": None,
-            "icerik": "<h4>Kanama Nedir?</h4><p>Damar bütünlüğünün bozulmasıdır.</p><h4>Dış Kanamalarda İlkyardım</h4><p>Yara üzerine temiz bezle baskı uygulanır. Kanama durmazsa ikinci bez konur. Uzuv kopması varsa turnike uygulanır.</p>"
-        },
-        {
-            "sira": 5, "baslik": "Yanıklarda İlkyardım", "resim": None,
-            "icerik": "<h4>Yanık Nedir?</h4><p>Isı, elektrik, kimyasal madde vb. etkisiyle doku bozulmasıdır.</p><h4>İlkyardım</h4><p>Yanık bölge en az 20 dakika tazyiksiz su altına tutulur. Asla diş macunu, yoğurt vb. sürülmez.</p>"
-        },
-         {
-            "sira": 6, "baslik": "Kırık, Çıkık ve Burkulma", "resim": None,
-            "icerik": "<h4>Kırık Belirtileri</h4><p>Ağrı, şişlik, şekil bozukluğu.</p><h4>İlkyardım</h4><p>Hareket ettirilmez, tespit edilir (sabitlenir). Açık kırık varsa yara temiz bezle kapatılır.</p>"
-        },
-         {
-            "sira": 7, "baslik": "Bilinç Bozuklukları", "resim": None,
-            "icerik": "<h4>Bayılma</h4><p>Kısa süreli bilinç kaybı.</p><h4>Koma</h4><p>Uzun süreli bilinç kaybı. Koma pozisyonu (yarı yüzükoyun yan yatış) verilir.</p>"
-        },
-         {
-            "sira": 8, "baslik": "Zehirlenmeler", "resim": None,
-            "icerik": "<h4>Sindirim Yoluyla</h4><p>Kusturulmaz (yakıcı maddeyse), 114 aranır.</p><h4>Solunum Yoluyla</h4><p>Temiz havaya çıkarılır.</p>"
-        },
-         {
-            "sira": 9, "baslik": "Hayvan Isırmaları", "resim": None,
-            "icerik": "<h4>Kedi-Köpek Isırması</h4><p>Yara 5 dakika sabunlu suyla yıkanır. Kuduz aşısı için sağlık kuruluşuna gidilir.</p>"
-        },
-        {
-            "sira": 10, "baslik": "Göze Yabancı Cisim", "resim": None,
-            "icerik": "<h4>Toz Kaçması</h4><p>Göz ovuşturulmaz, bol su ile yıkanır veya nemli bezle alınır.</p><h4>Batan Cisim</h4><p>Asla çıkarılmaya çalışılmaz, her iki göz kapatılarak hastaneye sevk edilir.</p>"
-        },
-        {
-            "sira": 11, "baslik": "Boğulmalar", "resim": None,
-            "icerik": "<h4>Suda Boğulma</h4><p>Sudan çıkarılır, solunum kontrol edilir. Gerekirse Temel Yaşam Desteği başlanır.</p>"
-        },
-        {
-            "sira": 12, "baslik": "Taşıma Teknikleri", "resim": None,
-            "icerik": "<h4>Genel Kural</h4><p>Mümkünse hasta taşınmaz. Taşınacaksa baş-boyun-gövde ekseni korunur.</p><h4>Sürükleme Yöntemi</h4><p>Dar alanlarda veya hasta çok kiloluysa kullanılır.</p>"
-        },
-        {
-            "sira": 13, "baslik": "Olay Yeri", "resim": None,
-            "icerik": "<h4>Güvenlik</h4><p>Önce kendi can güvenliğini sağla.</p>"
-        },
-        {
-            "sira": 14, "baslik": "İnsan Vücudu", "resim": None,
-            "icerik": "<h4>Sistemler</h4><p>Hareket, dolaşım, solunum...</p>"
-        },
-        {
-            "sira": 15, "baslik": "OED (Otomatik Şok)", "resim": None,
-            "icerik": "<h4>Kullanımı</h4><p>Cihaz sesli komut verir. Pedler yapıştırılır.</p>"
-        },
-        {
-            "sira": 16, "baslik": "Afetlerde Triyaj", "resim": None,
-            "icerik": "<h4>Renk Kodları</h4><p>Kırmızı, Sarı, Yeşil, Siyah.</p>"
-        }
-    ]
-
-    for data in konu_listesi:
-        yeni_konu = Konu(
-            sira=data["sira"],
-            baslik=data["baslik"],
-            icerik=data["icerik"],
-            resim=None 
-        )
-        db.session.add(yeni_konu)
-
-    admin = User.query.filter_by(username='admin').first()
-    if not admin:
-        yeni_admin = User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True)
-        db.session.add(yeni_admin)
-
-    db.session.commit()
+    # 1. Dosya Kontrolü
+    dosya_adi = 'yedek_icerik.json'
+    if not os.path.exists(dosya_adi):
+        return f"<h1 style='color:red'>❌ HATA: '{dosya_adi}' dosyası sunucuda YOK!</h1><p>Git ile gönderdiğine emin misin?</p>"
     
-    return """
-    <div style='text-align:center; padding:50px; font-family:sans-serif;'>
-        <h1 style='color:#2ecc71;'>✅ İÇERİKLER YÜKLENDİ!</h1>
-        <p>Resim: KULLANILMIYOR (None)</p>
-        <p>İçerik: DOLU DOLU (Full HTML)</p>
-        <br>
-        <a href='/' style='background:#3498db; color:white; padding:15px; text-decoration:none;'>SİTEYE DÖN</a>
-    </div>
-    """
+    rapor.append(f"✅ Dosya bulundu: {dosya_adi}")
+    
+    # 2. Dosyayı Oku
+    try:
+        with open(dosya_adi, 'r', encoding='utf-8') as f:
+            konu_listesi = json.load(f)
+        rapor.append(f"✅ Dosya okundu. İçinde {len(konu_listesi)} adet konu var.")
+        
+        if len(konu_listesi) > 0:
+            rapor.append(f"ℹ️ Örnek Başlık: {konu_listesi[0].get('baslik')}")
+        else:
+            return "<h1 style='color:red'>⚠️ Dosya var ama İÇİ BOŞ!</h1>"
+
+    except Exception as e:
+        return f"<h1>❌ Dosya Okuma Hatası: {str(e)}</h1>"
+
+    # 3. Veritabanına Yaz
+    try:
+        # Önce temizle
+        Konu.query.delete()
+        
+        sayac = 0
+        for data in konu_listesi:
+            yeni_konu = Konu(
+                sira=data.get("sira", 0),
+                baslik=data.get("baslik", "Başlıksız"),
+                icerik=data.get("icerik", ""), # HTML içerik
+                resim=None 
+            )
+            db.session.add(yeni_konu)
+            sayac += 1
+            
+        # Admin yoksa ekle
+        if not User.query.filter_by(username='admin').first():
+             yeni_admin = User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True)
+             db.session.add(yeni_admin)
+             
+        db.session.commit()
+        rapor.append(f"✅ Veritabanına {sayac} adet kayıt başarıyla işlendi.")
+        
+    except Exception as e:
+        db.session.rollback()
+        return f"<h1>❌ Veritabanı Hatası: {str(e)}</h1>"
+
+    # 4. Raporu Ekrana Bas
+    html_cikti = "<div style='padding:20px; font-family:sans-serif; line-height:1.6;'>"
+    html_cikti += "<h1 style='color:green'>İŞLEM RAPORU</h1><ul>"
+    for satir in rapor:
+        html_cikti += f"<li>{satir}</li>"
+    html_cikti += "</ul><br><a href='/' style='background:blue; color:white; padding:10px; text-decoration:none'>Ana Sayfaya Dön</a></div>"
+    
+    return html_cikti
 
 if __name__ == '__main__':
     app.run(debug=True)
