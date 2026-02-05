@@ -10,40 +10,32 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 
-# .env dosyasını yükle
 load_dotenv()
-
-# Google OAuth için HTTPS zorunluluğunu (lokal için) kaldır
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 app = Flask(__name__)
 
-# --- RENDER HTTPS AYARI (Google Girişinin Bozulmaması İçin Şart) ---
+# Render HTTPS Ayarı
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gizli-anahtar')
 app.config['JSON_AS_ASCII'] = False
 
-# --- VERİTABANI AYARLARI ---
+# Veritabanı
 db_url = os.environ.get("DATABASE_URL")
 if db_url and db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///local.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Bağlantı Kopma Koruması
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    "pool_pre_ping": True, 
-    "pool_recycle": 300
-}
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True, "pool_recycle": 300}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'giris_yap'
 
-# --- GOOGLE OAUTH ---
+# Google OAuth
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
@@ -56,10 +48,7 @@ google = oauth.register(
     jwks_uri='https://www.googleapis.com/oauth2/v3/certs' 
 )
 
-# ==========================================
-#               VERİTABANI MODELLERİ
-# ==========================================
-
+# --- MODELLER ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=True)
@@ -88,7 +77,7 @@ class Duyuru(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     baslik = db.Column(db.String(100), nullable=False)
     mesaj = db.Column(db.Text, nullable=False)
-    hedef = db.Column(db.String(100), default='/')
+    hedef = db.Column(db.String(100), default='/') 
     aktif = db.Column(db.Boolean, default=True)
     tarih = db.Column(db.DateTime, server_default=db.func.now())
 
@@ -104,15 +93,10 @@ class Cihaz(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
-# ==========================================
-#          MOBİL API (JSON ÇIKIŞLARI)
-# ==========================================
-
+# --- API ---
 @app.route('/api/konular')
 def api_get_konular():
     konular = Konu.query.order_by(Konu.sira).all()
-    # Resim göndermiyoruz (None)
     data = [{'id': k.id, 'baslik': k.baslik, 'sira': k.sira, 'resim': None} for k in konular]
     return jsonify(data)
 
@@ -123,8 +107,8 @@ def api_get_konu_detay(id):
         'id': konu.id,
         'baslik': konu.baslik,
         'icerik': konu.icerik,
-        'resim': None,
-        'sira': konu.sira
+        'sira': konu.sira,
+        'resim': None
     })
 
 @app.route('/api/duyurular')
@@ -139,13 +123,11 @@ def cihaz_kayit():
     token = data.get('token')
     platform = data.get('platform', 'android')
     if not token: return jsonify({'error': 'Token yok'}), 400
-    
     cihaz = Cihaz.query.filter_by(token=token).first()
     if not cihaz:
         yeni_cihaz = Cihaz(token=token, platform=platform)
         db.session.add(yeni_cihaz)
         db.session.commit()
-    
     return jsonify({'status': 'ok', 'message': 'Cihaz kaydedildi'})
 
 @app.route('/api/arama')
@@ -168,11 +150,7 @@ def api_arama():
             sonuclar.append({'id': konu.id, 'baslik': konu.baslik, 'ozet': ozet, 'sira': konu.sira})
     return jsonify(sonuclar)
 
-
-# ==========================================
-#             YÖNETİM PANELİ (ADMİN)
-# ==========================================
-
+# --- PANEL ---
 @app.route('/yonetim')
 @login_required
 def yonetim_index():
@@ -185,14 +163,11 @@ def yonetim_index():
 @login_required
 def yonetim_hesap():
     if not current_user.is_admin: return "Yetkisiz"
-    
     if request.method == 'POST':
         islem = request.form.get('islem_turu')
-        
         if islem == 'sifre_degistir':
             eski_sifre = request.form.get('eski_sifre')
             yeni_sifre = request.form.get('yeni_sifre')
-            
             if not check_password_hash(current_user.password, eski_sifre):
                 flash('❌ Mevcut şifre hatalı.', 'danger')
             elif len(yeni_sifre) < 4:
@@ -201,12 +176,10 @@ def yonetim_hesap():
                 current_user.password = generate_password_hash(yeni_sifre, method='pbkdf2:sha256')
                 db.session.commit()
                 flash('✅ Şifre güncellendi.', 'success')
-        
         elif islem == 'admin_ekle':
             kadi = request.form.get('kadi')
             email = request.form.get('email')
             sifre = request.form.get('sifre')
-            
             if User.query.filter((User.username==kadi) | (User.email==email)).first():
                 flash('⚠️ Kullanıcı zaten var.', 'warning')
             else:
@@ -214,9 +187,7 @@ def yonetim_hesap():
                 db.session.add(yeni_admin)
                 db.session.commit()
                 flash(f'🎉 {kadi} admin olarak eklendi!', 'success')
-                
         return redirect(url_for('yonetim_hesap'))
-
     adminler = User.query.filter_by(is_admin=True).all()
     return render_template('admin/hesap.html', adminler=adminler)
 
@@ -224,22 +195,17 @@ def yonetim_hesap():
 @login_required
 def yonetim_duyurular():
     if not current_user.is_admin: return "Yetkisiz"
-    
     if request.method == 'POST':
         baslik = request.form.get('baslik')
         mesaj = request.form.get('mesaj')
         hedef = request.form.get('hedef')
-        
         yeni_duyuru = Duyuru(baslik=baslik, mesaj=mesaj, hedef=hedef)
         db.session.add(yeni_duyuru)
         db.session.commit()
-        
         kayitli = Cihaz.query.count()
-        print(f"PUSH SENT: {baslik} -> {kayitli} cihaz (Link: {hedef})")
-        
+        print(f"PUSH SENT: {baslik} -> {kayitli} cihaz")
         flash(f'✅ Bildirim {kayitli} cihaza gönderildi!', 'success')
         return redirect(url_for('yonetim_duyurular'))
-        
     duyurular = Duyuru.query.order_by(Duyuru.id.desc()).all()
     return render_template('admin/duyurular.html', duyurular=duyurular)
 
@@ -282,11 +248,7 @@ def yonetim_duzenle(id):
         return redirect(url_for('yonetim_index'))
     return render_template('admin/duzenle.html', konu=konu)
 
-
-# ==========================================
-#              GENEL ROTALAR
-# ==========================================
-
+# --- GENEL ---
 @app.route('/')
 def index():
     konular = Konu.query.order_by(Konu.sira).all()
@@ -314,8 +276,7 @@ def quiz_coz(konu_id):
     sorular = Soru.query.filter_by(konu_id=konu_id).all()
     return render_template('quiz.html', konu=konu, sorular=sorular)
 
-# --- ÜYELİK VE GİRİŞ ---
-
+# --- AUTH ---
 @app.route('/giris', methods=['GET', 'POST'])
 def giris_yap():
     if request.method == 'POST':
@@ -390,70 +351,65 @@ def kurulum():
     return "Kurulum/Onarim Tamam."
 
 # ==========================================
-#     İÇERİK YÜKLEYİCİ (AJAN MOD - DETAYLI)
+#     İÇERİK YÜKLEYİCİ (JSON DOSYADAN)
 # ==========================================
+# Bu kod github'daki 'yedek_icerik.json' dosyasını
+# okuyup veritabanına yazar.
 
 @app.route('/icerik-yukle')
 def icerik_yukle():
     rapor = [] 
-    
-    # 1. Dosya Kontrolü
     dosya_adi = 'yedek_icerik.json'
+    
+    # 1. Dosya Kontrol
     if not os.path.exists(dosya_adi):
-        return f"<h1 style='color:red'>❌ HATA: '{dosya_adi}' dosyası sunucuda YOK!</h1><p>Git ile gönderdiğine emin misin?</p>"
+        return f"""
+        <div style='text-align:center; padding:50px;'>
+            <h1 style='color:red'>❌ HATA: JSON Dosyası Yok!</h1>
+            <p>Github'a <b>yedek_icerik.json</b> dosyasını gönderdiğinden emin ol.</p>
+        </div>
+        """
     
-    rapor.append(f"✅ Dosya bulundu: {dosya_adi}")
-    
-    # 2. Dosyayı Oku
     try:
+        # 2. Dosyayı Oku
         with open(dosya_adi, 'r', encoding='utf-8') as f:
             konu_listesi = json.load(f)
-        rapor.append(f"✅ Dosya okundu. İçinde {len(konu_listesi)} adet konu var.")
-        
-        if len(konu_listesi) > 0:
-            rapor.append(f"ℹ️ Örnek Başlık: {konu_listesi[0].get('baslik')}")
-        else:
-            return "<h1 style='color:red'>⚠️ Dosya var ama İÇİ BOŞ!</h1>"
-
-    except Exception as e:
-        return f"<h1>❌ Dosya Okuma Hatası: {str(e)}</h1>"
-
-    # 3. Veritabanına Yaz
-    try:
-        # Önce temizle
+            
+        # 3. Eski Verileri Sil
         Konu.query.delete()
         
+        # 4. Yeni Verileri Yaz
         sayac = 0
         for data in konu_listesi:
             yeni_konu = Konu(
                 sira=data.get("sira", 0),
                 baslik=data.get("baslik", "Başlıksız"),
-                icerik=data.get("icerik", ""), # HTML içerik
+                icerik=data.get("icerik", ""), 
                 resim=None 
             )
             db.session.add(yeni_konu)
             sayac += 1
             
-        # Admin yoksa ekle
+        # Admin Hesabı
         if not User.query.filter_by(username='admin').first():
              yeni_admin = User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True)
              db.session.add(yeni_admin)
              
         db.session.commit()
-        rapor.append(f"✅ Veritabanına {sayac} adet kayıt başarıyla işlendi.")
+        
+        return f"""
+        <div style='text-align:center; padding:50px; font-family:sans-serif;'>
+            <h1 style='color:green;'>✅ JSON VERİLERİ YÜKLENDİ!</h1>
+            <p>Toplam <b>{sayac}</b> adet konu içeriği başarıyla işlendi.</p>
+            <p>İndex menüsü artık lokaldeki gibi çalışacak.</p>
+            <br>
+            <a href='/' style='background:#3498db; color:white; padding:15px; text-decoration:none;'>SİTEYE DÖN</a>
+        </div>
+        """
         
     except Exception as e:
         db.session.rollback()
-        return f"<h1>❌ Veritabanı Hatası: {str(e)}</h1>"
-
-    # 4. Raporu Ekrana Bas
-    html_cikti = "<div style='padding:20px; font-family:sans-serif; line-height:1.6;'>"
-    html_cikti += "<h1 style='color:green'>İŞLEM RAPORU</h1><ul>"
-    for satir in rapor:
-        html_cikti += f"<li>{satir}</li>"
-    html_cikti += "</ul><br><a href='/' style='background:blue; color:white; padding:10px; text-decoration:none'>Ana Sayfaya Dön</a></div>"
-    
-    return html_cikti
+        return f"<h1>❌ BİR HATA OLDU: {str(e)}</h1>"
 
 if __name__ == '__main__':
     app.run(debug=True)
