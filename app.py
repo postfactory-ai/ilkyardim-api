@@ -69,7 +69,11 @@ class Soru(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     konu_id = db.Column(db.Integer, db.ForeignKey('konu.id'), nullable=False)
     soru_metni = db.Column(db.Text, nullable=False)
-    a, b, c, d = db.Column(db.String(200)), db.Column(db.String(200)), db.Column(db.String(200)), db.Column(db.String(200))
+    # Senin yapında a, b, c, d ayrı kolonlar, bu doğru.
+    a = db.Column(db.String(200))
+    b = db.Column(db.String(200))
+    c = db.Column(db.String(200))
+    d = db.Column(db.String(200))
     dogru_cevap = db.Column(db.String(1), nullable=False)
 
 class Duyuru(db.Model):
@@ -93,7 +97,8 @@ class Cihaz(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- API ---
+# --- API (MOBİL İÇİN) ---
+
 @app.route('/api/konular')
 def api_get_konular():
     konular = Konu.query.order_by(Konu.sira).all()
@@ -110,6 +115,25 @@ def api_get_konu_detay(id):
         'sira': konu.sira,
         'resim': None
     })
+
+# --- İŞTE EKSİK OLAN VE EKLEDİĞİMİZ PARÇA BURASI ---
+@app.route('/api/quiz/<int:konu_id>')
+def api_get_quiz(konu_id):
+    sorular = Soru.query.filter_by(konu_id=konu_id).all()
+    # Mobil uygulama {secenekler: {A:..., B:...}} formatı bekliyor, senin DB ise a,b,c,d tutuyor.
+    # Burada dönüştürüyoruz:
+    return jsonify([{
+        'id': s.id,
+        'soru': s.soru_metni,
+        'secenekler': {
+            'A': s.a,
+            'B': s.b,
+            'C': s.c,
+            'D': s.d
+        },
+        'dogru_cevap': s.dogru_cevap
+    } for s in sorular])
+# ---------------------------------------------------
 
 @app.route('/api/duyurular')
 def api_get_duyurular():
