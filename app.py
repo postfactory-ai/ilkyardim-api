@@ -69,7 +69,6 @@ class Soru(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     konu_id = db.Column(db.Integer, db.ForeignKey('konu.id'), nullable=False)
     soru_metni = db.Column(db.Text, nullable=False)
-    # Senin yapında a, b, c, d ayrı kolonlar, bu doğru.
     a = db.Column(db.String(200))
     b = db.Column(db.String(200))
     c = db.Column(db.String(200))
@@ -116,24 +115,15 @@ def api_get_konu_detay(id):
         'resim': None
     })
 
-# --- İŞTE EKSİK OLAN VE EKLEDİĞİMİZ PARÇA BURASI ---
 @app.route('/api/quiz/<int:konu_id>')
 def api_get_quiz(konu_id):
     sorular = Soru.query.filter_by(konu_id=konu_id).all()
-    # Mobil uygulama {secenekler: {A:..., B:...}} formatı bekliyor, senin DB ise a,b,c,d tutuyor.
-    # Burada dönüştürüyoruz:
     return jsonify([{
         'id': s.id,
         'soru': s.soru_metni,
-        'secenekler': {
-            'A': s.a,
-            'B': s.b,
-            'C': s.c,
-            'D': s.d
-        },
+        'secenekler': { 'A': s.a, 'B': s.b, 'C': s.c, 'D': s.d },
         'dogru_cevap': s.dogru_cevap
     } for s in sorular])
-# ---------------------------------------------------
 
 @app.route('/api/duyurular')
 def api_get_duyurular():
@@ -173,6 +163,52 @@ def api_arama():
             else: ozet = temiz_metin[:150] + "..."
             sonuclar.append({'id': konu.id, 'baslik': konu.baslik, 'ozet': ozet, 'sira': konu.sira})
     return jsonify(sonuclar)
+
+# --- MOBİL GİRİŞ API'LERİ (YENİ) ---
+@app.route('/api/kullanici-bilgi', methods=['POST'])
+def api_kullanici_bilgi():
+    data = request.json
+    google_id = data.get('google_id')
+    email = data.get('email')
+    user = None
+    if google_id:
+        user = User.query.filter_by(google_id=google_id).first()
+    elif email:
+        user = User.query.filter_by(email=email).first()
+        
+    if user:
+        return jsonify({
+            'durum': 'tamam',
+            'ad': user.username,
+            'email': user.email,
+            'admin_mi': user.is_admin
+        })
+    else:
+        return jsonify({'durum': 'hata', 'mesaj': 'Kullanıcı bulunamadı'}), 404
+
+@app.route('/api/mobil-login', methods=['POST'])
+def api_mobil_login():
+    data = request.json
+    email = data.get('email')
+    ad = data.get('ad')
+    google_id = data.get('google_id')
+    
+    if not email: return jsonify({'hata': 'Email yok'}), 400
+    
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        yeni_user = User(username=ad, email=email, google_id=google_id, password=None)
+        db.session.add(yeni_user)
+        db.session.commit()
+        islem = "yeni_kayit"
+    else:
+        if not user.google_id:
+            user.google_id = google_id
+            db.session.commit()
+        islem = "giris"
+        
+    return jsonify({'durum': 'basarili', 'islem': islem})
+# -----------------------------------
 
 # --- PANEL ---
 @app.route('/yonetim')
@@ -375,65 +411,31 @@ def kurulum():
     return "Kurulum/Onarim Tamam."
 
 # ==========================================
-#     İÇERİK YÜKLEYİCİ (JSON DOSYADAN)
+#     İÇERİK YÜKLEYİCİ
 # ==========================================
-# Bu kod github'daki 'yedek_icerik.json' dosyasını
-# okuyup veritabanına yazar.
-
 @app.route('/icerik-yukle')
 def icerik_yukle():
     rapor = [] 
     dosya_adi = 'yedek_icerik.json'
-    
-    # 1. Dosya Kontrol
     if not os.path.exists(dosya_adi):
-        return f"""
-        <div style='text-align:center; padding:50px;'>
-            <h1 style='color:red'>❌ HATA: JSON Dosyası Yok!</h1>
-            <p>Github'a <b>yedek_icerik.json</b> dosyasını gönderdiğinden emin ol.</p>
-        </div>
-        """
-    
+        return "<h1>❌ HATA: JSON Dosyası Yok!</h1>"
     try:
-        # 2. Dosyayı Oku
         with open(dosya_adi, 'r', encoding='utf-8') as f:
             konu_listesi = json.load(f)
-            
-        # 3. Eski Verileri Sil
         Konu.query.delete()
-        
-        # 4. Yeni Verileri Yaz
         sayac = 0
         for data in konu_listesi:
-            yeni_konu = Konu(
-                sira=data.get("sira", 0),
-                baslik=data.get("baslik", "Başlıksız"),
-                icerik=data.get("icerik", ""), 
-                resim=None 
-            )
+            yeni_konu = Konu(sira=data.get("sira", 0), baslik=data.get("baslik", "Başlıksız"), icerik=data.get("icerik", ""), resim=None)
             db.session.add(yeni_konu)
             sayac += 1
-            
-        # Admin Hesabı
         if not User.query.filter_by(username='admin').first():
              yeni_admin = User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True)
              db.session.add(yeni_admin)
-             
         db.session.commit()
-        
-        return f"""
-        <div style='text-align:center; padding:50px; font-family:sans-serif;'>
-            <h1 style='color:green;'>✅ JSON VERİLERİ YÜKLENDİ!</h1>
-            <p>Toplam <b>{sayac}</b> adet konu içeriği başarıyla işlendi.</p>
-            <p>İndex menüsü artık lokaldeki gibi çalışacak.</p>
-            <br>
-            <a href='/' style='background:#3498db; color:white; padding:15px; text-decoration:none;'>SİTEYE DÖN</a>
-        </div>
-        """
-        
+        return f"<h1>✅ {sayac} Konu Yüklendi!</h1>"
     except Exception as e:
         db.session.rollback()
-        return f"<h1>❌ BİR HATA OLDU: {str(e)}</h1>"
+        return f"<h1>❌ HATA: {str(e)}</h1>"
 
 if __name__ == '__main__':
     app.run(debug=True)
