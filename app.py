@@ -39,15 +39,19 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'giris_yap'
 
-# --- FIREBASE BAŞLATMA ---
+# --- FIREBASE BAŞLATMA (Hata alırsa sunucuyu durdurma, sadece pas geç) ---
+firebase_aktif = False
 try:
     if not firebase_admin._apps:
         if os.path.exists("serviceAccountKey.json"):
             cred = credentials.Certificate("serviceAccountKey.json")
             firebase_admin.initialize_app(cred)
+            firebase_aktif = True
             print("✅ Firebase Admin Başlatıldı!")
         else:
-            print("⚠️ serviceAccountKey.json bulunamadı! Push bildirim çalışmayacak.")
+            print("⚠️ serviceAccountKey.json bulunamadı! Push bildirimler çalışmayacak ama sistem devam edecek.")
+    else:
+        firebase_aktif = True
 except Exception as e:
     print(f"⚠️ Firebase Admin Hatası: {e}")
 
@@ -103,18 +107,17 @@ class Duyuru(db.Model):
 class Cihaz(db.Model):
     __tablename__ = 'cihaz'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # Kullanıcıya bağlı cihaz
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     token = db.Column(db.String(500), unique=True, nullable=False)
     platform = db.Column(db.String(20), default='android')
     kayit_tarihi = db.Column(db.DateTime, server_default=db.func.now())
 
-# GÜNCELLENMİŞ TABLO: Kimden bilgisi eklendi
 class GeriBildirim(db.Model):
     __tablename__ = 'geri_bildirim'
     id = db.Column(db.Integer, primary_key=True)
     baslik = db.Column(db.String(200), nullable=False)
     mesaj = db.Column(db.Text, nullable=False)
-    kimden = db.Column(db.String(150), nullable=True) # YENİ ALAN: Email veya isim
+    kimden = db.Column(db.String(150), nullable=True) 
     tarih = db.Column(db.DateTime, server_default=db.func.now())
     okundu = db.Column(db.Boolean, default=False)
 
@@ -157,17 +160,15 @@ def api_get_duyurular():
     data = [{'id': d.id, 'baslik': d.baslik, 'mesaj': d.mesaj, 'hedef': d.hedef, 'tarih': d.tarih} for d in duyurular]
     return jsonify(data)
 
-# CİHAZ KAYIT (User ID ile eşleştirme yapıyoruz ki Admin'i bulalım)
 @app.route('/api/cihaz-kayit', methods=['POST'])
 def cihaz_kayit():
     data = request.json
     token = data.get('token')
     platform = data.get('platform', 'android')
-    email = data.get('email') # Opsiyonel: Giriş yapmışsa email gelir
+    email = data.get('email')
 
     if not token: return jsonify({'error': 'Token yok'}), 400
     
-    # User ID bulma (Eğer email geldiyse)
     user_id = None
     if email:
         user = User.query.filter_by(email=email).first()
@@ -178,62 +179,62 @@ def cihaz_kayit():
         yeni_cihaz = Cihaz(token=token, platform=platform, user_id=user_id)
         db.session.add(yeni_cihaz)
     else:
-        # Cihaz zaten varsa ama user_id'si yoksa güncelle
         if user_id and not cihaz.user_id:
             cihaz.user_id = user_id
     
     db.session.commit()
     return jsonify({'status': 'ok', 'message': 'Cihaz kaydedildi/güncellendi'})
 
-# --- SİHİRLİ ALAN: FEEDBACK + ADMİN BİLDİRİMİ ---
+# --- 👇 BURASI DÜZELTİLDİ: ZIRHLI FEEDBACK 👇 ---
 @app.route('/api/feedback', methods=['POST'])
 def api_feedback():
-    data = request.json
-    baslik = data.get('baslik')
-    mesaj = data.get('mesaj')
-    kimden = data.get('kimden', 'Misafir') # Mobil'den gelmezse 'Misafir' yaz
-
-    if not baslik or not mesaj:
-        return jsonify({'durum': 'hata', 'mesaj': 'Başlık ve mesaj zorunludur.'}), 400
-
-    # 1. Veritabanına Kaydet
-    yeni_bildirim = GeriBildirim(baslik=baslik, mesaj=mesaj, kimden=kimden)
-    db.session.add(yeni_bildirim)
-    db.session.commit()
-    
-    # 2. ADMİNLERİ BUL VE BİLDİRİM GÖNDER 🔔
     try:
-        # Admin olan kullanıcıları bul
-        admin_users = User.query.filter_by(is_admin=True).all()
-        admin_ids = [u.id for u in admin_users]
-        
-        # Bu adminlerin cihaz tokenlarını bul
-        if admin_ids:
-            admin_cihazlar = Cihaz.query.filter(Cihaz.user_id.in_(admin_ids)).all()
-            tokens = [c.token for c in admin_cihazlar if c.token]
-            
-            if tokens:
-                message = messaging.MulticastMessage(
-                    notification=messaging.Notification(
-                        title=f"📩 Yeni Mesaj: {kimden}",
-                        body=f"{baslik}",
-                    ),
-                    data={'hedef': '/yonetim/mesajlar'}, # Bildirime tıklayınca admini oraya atarız (ilerde)
-                    android=messaging.AndroidConfig(
-                        priority='high',
-                        notification=messaging.AndroidNotification(
-                            sound='default',
-                            channel_id='high_importance_channel',
-                        )
-                    ),
-                    tokens=tokens,
-                )
-                messaging.send_each_for_multicast(message)
-                print("✅ Adminlere bildirim gönderildi!")
-    except Exception as e:
-        print(f"⚠️ Admin bildirim hatası: {e}")
+        data = request.json
+        baslik = data.get('baslik')
+        mesaj = data.get('mesaj')
+        kimden = data.get('kimden', 'Misafir')
 
-    return jsonify({'durum': 'basarili', 'mesaj': 'Geri bildiriminiz alındı!'})
+        if not baslik or not mesaj:
+            return jsonify({'durum': 'hata', 'mesaj': 'Başlık ve mesaj zorunludur.'}), 400
+
+        # 1. ÖNCE KAYDET (Bu kısım hatasız çalışır)
+        yeni_bildirim = GeriBildirim(baslik=baslik, mesaj=mesaj, kimden=kimden)
+        db.session.add(yeni_bildirim)
+        db.session.commit()
+        
+        # 2. BİLDİRİM GÖNDERMEYİ DENE (Hata verirse yut, sisteme çaktırma)
+        if firebase_aktif:
+            try:
+                admin_users = User.query.filter_by(is_admin=True).all()
+                admin_ids = [u.id for u in admin_users]
+                if admin_ids:
+                    admin_cihazlar = Cihaz.query.filter(Cihaz.user_id.in_(admin_ids)).all()
+                    tokens = [c.token for c in admin_cihazlar if c.token]
+                    
+                    if tokens:
+                        message = messaging.MulticastMessage(
+                            notification=messaging.Notification(
+                                title=f"📩 Yeni Mesaj: {kimden}",
+                                body=f"{baslik}",
+                            ),
+                            data={'hedef': '/yonetim/mesajlar'},
+                            android=messaging.AndroidConfig(priority='high', notification=messaging.AndroidNotification(sound='default', channel_id='high_importance_channel')),
+                            tokens=tokens,
+                        )
+                        messaging.send_each_for_multicast(message)
+                        print("✅ Adminlere bildirim atıldı.")
+            except Exception as e:
+                print(f"⚠️ Bildirim hatası (Önemsiz): {e}")
+        else:
+            print("⚠️ Firebase aktif değil, bildirim atlanıyor.")
+
+        # HER DURUMDA BAŞARILI DÖN
+        return jsonify({'durum': 'basarili', 'mesaj': 'Geri bildiriminiz alındı!'})
+    
+    except Exception as e:
+        print(f"🔥 KRİTİK VERİTABANI HATASI: {e}")
+        return jsonify({'durum': 'hata', 'mesaj': f'Sunucu Hatası: {str(e)}'}), 500
+# ----------------------------------------------------
 
 @app.route('/api/arama')
 def api_arama():
@@ -255,7 +256,6 @@ def api_arama():
             sonuclar.append({'id': konu.id, 'baslik': konu.baslik, 'ozet': ozet, 'sira': konu.sira})
     return jsonify(sonuclar)
 
-# --- MOBİL GİRİŞ & KAYIT ---
 @app.route('/api/kullanici-bilgi', methods=['POST'])
 def api_kullanici_bilgi():
     data = request.json
@@ -266,14 +266,8 @@ def api_kullanici_bilgi():
         user = User.query.filter_by(google_id=google_id).first()
     elif email:
         user = User.query.filter_by(email=email).first()
-        
     if user:
-        return jsonify({
-            'durum': 'tamam',
-            'ad': user.username,
-            'email': user.email,
-            'admin_mi': user.is_admin
-        })
+        return jsonify({'durum': 'tamam', 'ad': user.username, 'email': user.email, 'admin_mi': user.is_admin})
     else:
         return jsonify({'durum': 'hata', 'mesaj': 'Kullanıcı bulunamadı'}), 404
 
@@ -283,9 +277,7 @@ def api_mobil_login():
     email = data.get('email')
     ad = data.get('ad')
     google_id = data.get('google_id')
-    
     if not email: return jsonify({'hata': 'Email yok'}), 400
-    
     user = User.query.filter_by(email=email).first()
     if not user:
         yeni_user = User(username=ad, email=email, google_id=google_id, password=None)
@@ -297,7 +289,6 @@ def api_mobil_login():
             user.google_id = google_id
             db.session.commit()
         islem = "giris"
-        
     return jsonify({'durum': 'basarili', 'islem': islem})
 
 @app.route('/api/giris', methods=['POST'])
@@ -305,22 +296,10 @@ def api_giris():
     data = request.json
     girdi = data.get('username')
     sifre = data.get('password')
-
-    if not girdi or not sifre:
-        return jsonify({'durum': 'hata', 'mesaj': 'Eksik bilgi!'}), 400
-
+    if not girdi or not sifre: return jsonify({'durum': 'hata', 'mesaj': 'Eksik bilgi!'}), 400
     user = User.query.filter((User.username == girdi) | (User.email == girdi)).first()
-    
     if user and user.password and check_password_hash(user.password, sifre):
-        return jsonify({
-            'durum': 'basarili',
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-                'is_admin': user.is_admin
-            }
-        })
+        return jsonify({'durum': 'basarili', 'user': {'id': user.id, 'username': user.username, 'email': user.email, 'is_admin': user.is_admin}})
     else:
         return jsonify({'durum': 'hata', 'mesaj': 'Hatalı kullanıcı adı veya şifre!'}), 401
 
@@ -330,32 +309,17 @@ def api_kayit():
     kadi = data.get('username')
     email = data.get('email')
     sifre = data.get('password')
-
-    if not kadi or not email or not sifre:
-        return jsonify({'durum': 'hata', 'mesaj': 'Tüm alanları doldurun!'}), 400
-
-    if User.query.filter((User.username == kadi) | (User.email == email)).first():
-        return jsonify({'durum': 'hata', 'mesaj': 'Bu kullanıcı zaten kayıtlı!'}), 409
-
+    if not kadi or not email or not sifre: return jsonify({'durum': 'hata', 'mesaj': 'Tüm alanları doldurun!'}), 400
+    if User.query.filter((User.username == kadi) | (User.email == email)).first(): return jsonify({'durum': 'hata', 'mesaj': 'Bu kullanıcı zaten kayıtlı!'}), 409
     try:
         hashed_pw = generate_password_hash(sifre, method='pbkdf2:sha256')
         yeni_user = User(username=kadi, email=email, password=hashed_pw)
         db.session.add(yeni_user)
         db.session.commit()
-        
-        return jsonify({
-            'durum': 'basarili',
-            'user': {
-                'id': yeni_user.id,
-                'username': yeni_user.username,
-                'email': yeni_user.email,
-                'is_admin': yeni_user.is_admin
-            }
-        })
+        return jsonify({'durum': 'basarili', 'user': {'id': yeni_user.id, 'username': yeni_user.username, 'email': yeni_user.email, 'is_admin': yeni_user.is_admin}})
     except Exception as e:
         return jsonify({'durum': 'hata', 'mesaj': str(e)}), 500
 
-# --- PANEL & YÖNETİM ---
 @app.route('/yonetim')
 @login_required
 def yonetim_index():
@@ -370,7 +334,6 @@ def yonetim_index():
 def yonetim_mesajlar():
     if not current_user.is_admin: return "Yetkisiz"
     mesajlar = GeriBildirim.query.order_by(GeriBildirim.tarih.desc()).all()
-    # Sayfa açılınca mesajları okundu sayabiliriz (opsiyonel)
     return render_template('admin/mesajlar.html', mesajlar=mesajlar)
 
 @app.route('/yonetim/hesap', methods=['GET', 'POST'])
@@ -382,10 +345,8 @@ def yonetim_hesap():
         if islem == 'sifre_degistir':
             eski_sifre = request.form.get('eski_sifre')
             yeni_sifre = request.form.get('yeni_sifre')
-            if not check_password_hash(current_user.password, eski_sifre):
-                flash('❌ Mevcut şifre hatalı.', 'danger')
-            elif len(yeni_sifre) < 4:
-                flash('⚠️ Yeni şifre çok kısa!', 'warning')
+            if not check_password_hash(current_user.password, eski_sifre): flash('❌ Mevcut şifre hatalı.', 'danger')
+            elif len(yeni_sifre) < 4: flash('⚠️ Yeni şifre çok kısa!', 'warning')
             else:
                 current_user.password = generate_password_hash(yeni_sifre, method='pbkdf2:sha256')
                 db.session.commit()
@@ -394,8 +355,7 @@ def yonetim_hesap():
             kadi = request.form.get('kadi')
             email = request.form.get('email')
             sifre = request.form.get('sifre')
-            if User.query.filter((User.username==kadi) | (User.email==email)).first():
-                flash('⚠️ Kullanıcı zaten var.', 'warning')
+            if User.query.filter((User.username==kadi) | (User.email==email)).first(): flash('⚠️ Kullanıcı zaten var.', 'warning')
             else:
                 yeni_admin = User(username=kadi, email=email, password=generate_password_hash(sifre, method='pbkdf2:sha256'), is_admin=True)
                 db.session.add(yeni_admin)
@@ -409,7 +369,6 @@ def yonetim_hesap():
 @login_required
 def yonetim_duyurular():
     if not current_user.is_admin: return "Yetkisiz"
-    
     if request.method == 'POST':
         baslik = request.form.get('baslik')
         mesaj = request.form.get('mesaj')
@@ -417,21 +376,22 @@ def yonetim_duyurular():
         yeni_duyuru = Duyuru(baslik=baslik, mesaj=mesaj, hedef=hedef)
         db.session.add(yeni_duyuru)
         db.session.commit()
-        # PUSH logic...
-        try:
-            tum_cihazlar = Cihaz.query.all()
-            tokens = [c.token for c in tum_cihazlar if c.token]
-            if tokens:
-                message = messaging.MulticastMessage(
-                    notification=messaging.Notification(title=baslik, body=mesaj),
-                    data={'hedef': hedef},
-                    android=messaging.AndroidConfig(priority='high', notification=messaging.AndroidNotification(sound='default', channel_id='high_importance_channel')),
-                    tokens=tokens,
-                )
-                messaging.send_each_for_multicast(message)
-                flash('✅ Bildirim gönderildi!', 'success')
-        except Exception as e:
-            flash(f'⚠️ Push Hatası: {e}', 'warning')
+        if firebase_aktif:
+            try:
+                tum_cihazlar = Cihaz.query.all()
+                tokens = [c.token for c in tum_cihazlar if c.token]
+                if tokens:
+                    message = messaging.MulticastMessage(
+                        notification=messaging.Notification(title=baslik, body=mesaj),
+                        data={'hedef': hedef},
+                        android=messaging.AndroidConfig(priority='high', notification=messaging.AndroidNotification(sound='default', channel_id='high_importance_channel')),
+                        tokens=tokens,
+                    )
+                    messaging.send_each_for_multicast(message)
+                    flash('✅ Bildirim gönderildi!', 'success')
+            except Exception as e: flash(f'⚠️ Push Hatası: {e}', 'warning')
+        else:
+             flash('✅ Duyuru eklendi (Bildirim atlanıldı).', 'success')
         return redirect(url_for('yonetim_duyurular'))
     duyurular = Duyuru.query.order_by(Duyuru.id.desc()).all()
     return render_template('admin/duyurular.html', duyurular=duyurular)
@@ -475,7 +435,6 @@ def yonetim_duzenle(id):
         return redirect(url_for('yonetim_index'))
     return render_template('admin/duzenle.html', konu=konu)
 
-# --- WEB YOLLARI ---
 @app.route('/')
 def index():
     konular = Konu.query.order_by(Konu.sira).all()
@@ -503,7 +462,6 @@ def quiz_coz(konu_id):
     sorular = Soru.query.filter_by(konu_id=konu_id).all()
     return render_template('quiz.html', konu=konu, sorular=sorular)
 
-# --- AUTH ---
 @app.route('/giris', methods=['GET', 'POST'])
 def giris_yap():
     if request.method == 'POST':
@@ -574,9 +532,28 @@ def profil():
 
 @app.route('/kurulum-yap')
 def kurulum():
-    db.create_all()
-    return "Kurulum/Onarim Tamam."
+    try:
+        db.create_all()
+        return "Kurulum/Onarim Tamam."
+    except Exception as e:
+        return f"HATA: {e}"
 
-# ... (İçerik yükleme aynı)
+@app.route('/icerik-yukle')
+def icerik_yukle():
+    dosya_adi = 'yedek_icerik.json'
+    if not os.path.exists(dosya_adi): return "HATA: Dosya yok"
+    try:
+        with open(dosya_adi, 'r', encoding='utf-8') as f:
+            konu_listesi = json.load(f)
+        Konu.query.delete()
+        for data in konu_listesi:
+            db.session.add(Konu(sira=data.get("sira", 0), baslik=data.get("baslik"), icerik=data.get("icerik"), resim=None))
+        if not User.query.filter_by(username='admin').first():
+             db.session.add(User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True))
+        db.session.commit()
+        return "İçerik Yüklendi"
+    except Exception as e:
+        return f"HATA: {str(e)}"
+
 if __name__ == '__main__':
     app.run(debug=True)
