@@ -4,3 +4,5 @@ instance/
 .env
 local.db
 *.pyc
+serviceAccountKey.jsonserviceAccountKey.json 
+serviceAccountKey.json 

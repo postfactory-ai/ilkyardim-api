@@ -1,3 +1,19 @@
+<meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="high_importance_channel" />
+        </application> 
+    ```
+
+---
+
+### 🛠️ 2. HAMLE: Sunucuyu Güncelle (`app.py`) 🌍
+
+Şimdi sunucuya diyeceğiz ki: "Mesajı gönderirken üzerine 'Bu Yüksek Öncelikli Kanal İçindir' diye not düş."
+
+Mevcut `app.py` dosyanı tamamen sil ve **bu GÜNCELLENMİŞ TAM HALİ** yapıştır.
+*(Tek fark: `channel_id='high_importance_channel'` satırını ekledim.)*
+
+```python
 import os
 import re
 import json
@@ -9,6 +25,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix 
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
+
+# --- FIREBASE ADMIN SDK ---
+import firebase_admin
+from firebase_admin import credentials, messaging
 
 load_dotenv()
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -34,6 +54,19 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'giris_yap'
+
+# --- FIREBASE BAŞLATMA ---
+try:
+    if not firebase_admin._apps:
+        # Render'da "Secret File" olarak tanımlı dosya
+        if os.path.exists("serviceAccountKey.json"):
+            cred = credentials.Certificate("serviceAccountKey.json")
+            firebase_admin.initialize_app(cred)
+            print("✅ Firebase Admin Başlatıldı!")
+        else:
+            print("⚠️ serviceAccountKey.json bulunamadı! Push bildirim çalışmayacak.")
+except Exception as e:
+    print(f"⚠️ Firebase Admin Hatası: {e}")
 
 # Google OAuth
 oauth = OAuth(app)
@@ -96,7 +129,7 @@ class Cihaz(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- API (MOBİL İÇİN) ---
+# --- API ENDPOINTS ---
 
 @app.route('/api/konular')
 def api_get_konular():
@@ -137,12 +170,15 @@ def cihaz_kayit():
     token = data.get('token')
     platform = data.get('platform', 'android')
     if not token: return jsonify({'error': 'Token yok'}), 400
+    
     cihaz = Cihaz.query.filter_by(token=token).first()
     if not cihaz:
         yeni_cihaz = Cihaz(token=token, platform=platform)
         db.session.add(yeni_cihaz)
         db.session.commit()
-    return jsonify({'status': 'ok', 'message': 'Cihaz kaydedildi'})
+        return jsonify({'status': 'ok', 'message': 'Yeni cihaz kaydedildi'})
+    
+    return jsonify({'status': 'ok', 'message': 'Cihaz zaten kayitli'})
 
 @app.route('/api/arama')
 def api_arama():
@@ -164,7 +200,7 @@ def api_arama():
             sonuclar.append({'id': konu.id, 'baslik': konu.baslik, 'ozet': ozet, 'sira': konu.sira})
     return jsonify(sonuclar)
 
-# --- MOBİL GİRİŞ API'LERİ (YENİ) ---
+# --- MOBİL GİRİŞ & KAYIT ---
 @app.route('/api/kullanici-bilgi', methods=['POST'])
 def api_kullanici_bilgi():
     data = request.json
@@ -208,9 +244,63 @@ def api_mobil_login():
         islem = "giris"
         
     return jsonify({'durum': 'basarili', 'islem': islem})
-# -----------------------------------
 
-# --- PANEL ---
+@app.route('/api/giris', methods=['POST'])
+def api_giris():
+    data = request.json
+    girdi = data.get('username')
+    sifre = data.get('password')
+
+    if not girdi or not sifre:
+        return jsonify({'durum': 'hata', 'mesaj': 'Eksik bilgi!'}), 400
+
+    user = User.query.filter((User.username == girdi) | (User.email == girdi)).first()
+    
+    if user and user.password and check_password_hash(user.password, sifre):
+        return jsonify({
+            'durum': 'basarili',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'is_admin': user.is_admin
+            }
+        })
+    else:
+        return jsonify({'durum': 'hata', 'mesaj': 'Hatalı kullanıcı adı veya şifre!'}), 401
+
+@app.route('/api/kayit', methods=['POST'])
+def api_kayit():
+    data = request.json
+    kadi = data.get('username')
+    email = data.get('email')
+    sifre = data.get('password')
+
+    if not kadi or not email or not sifre:
+        return jsonify({'durum': 'hata', 'mesaj': 'Tüm alanları doldurun!'}), 400
+
+    if User.query.filter((User.username == kadi) | (User.email == email)).first():
+        return jsonify({'durum': 'hata', 'mesaj': 'Bu kullanıcı zaten kayıtlı!'}), 409
+
+    try:
+        hashed_pw = generate_password_hash(sifre, method='pbkdf2:sha256')
+        yeni_user = User(username=kadi, email=email, password=hashed_pw)
+        db.session.add(yeni_user)
+        db.session.commit()
+        
+        return jsonify({
+            'durum': 'basarili',
+            'user': {
+                'id': yeni_user.id,
+                'username': yeni_user.username,
+                'email': yeni_user.email,
+                'is_admin': yeni_user.is_admin
+            }
+        })
+    except Exception as e:
+        return jsonify({'durum': 'hata', 'mesaj': str(e)}), 500
+
+# --- PANEL & YÖNETİM ---
 @app.route('/yonetim')
 @login_required
 def yonetim_index():
@@ -255,17 +345,52 @@ def yonetim_hesap():
 @login_required
 def yonetim_duyurular():
     if not current_user.is_admin: return "Yetkisiz"
+    
     if request.method == 'POST':
         baslik = request.form.get('baslik')
         mesaj = request.form.get('mesaj')
         hedef = request.form.get('hedef')
+        
         yeni_duyuru = Duyuru(baslik=baslik, mesaj=mesaj, hedef=hedef)
         db.session.add(yeni_duyuru)
         db.session.commit()
-        kayitli = Cihaz.query.count()
-        print(f"PUSH SENT: {baslik} -> {kayitli} cihaz")
-        flash(f'✅ Bildirim {kayitli} cihaza gönderildi!', 'success')
+        
+        # --- PUSH BİLDİRİM (DÜZELTİLDİ: KANAL ID EKLENDİ) ---
+        try:
+            tum_cihazlar = Cihaz.query.all()
+            tokens = [c.token for c in tum_cihazlar if c.token]
+            
+            if tokens:
+                message = messaging.MulticastMessage(
+                    notification=messaging.Notification(
+                        title=baslik,
+                        body=mesaj,
+                    ),
+                    data={'hedef': hedef},
+                    
+                    # 👇 BURASI ÇOK ÖNEMLİ: ANDROID KANALI TANIMLANDI 👇
+                    android=messaging.AndroidConfig(
+                        priority='high',
+                        notification=messaging.AndroidNotification(
+                            sound='default',
+                            channel_id='high_importance_channel', # ARTIK TELEFON KANALI BİLİYOR
+                            click_action='FLUTTER_NOTIFICATION_CLICK'
+                        )
+                    ),
+                    # ------------------------------------------------
+                    
+                    tokens=tokens,
+                )
+                response = messaging.send_each_for_multicast(message)
+                flash(f'✅ Bildirim {response.success_count} cihaza ulaştı!', 'success')
+            else:
+                flash('⚠️ Kayıtlı cihaz yok, sadece veritabanına eklendi.', 'warning')
+        except Exception as e:
+            print(f"PUSH HATASI: {e}")
+            flash(f'⚠️ Push Hatası: {e}', 'warning')
+
         return redirect(url_for('yonetim_duyurular'))
+        
     duyurular = Duyuru.query.order_by(Duyuru.id.desc()).all()
     return render_template('admin/duyurular.html', duyurular=duyurular)
 
@@ -308,7 +433,7 @@ def yonetim_duzenle(id):
         return redirect(url_for('yonetim_index'))
     return render_template('admin/duzenle.html', konu=konu)
 
-# --- GENEL ---
+# --- WEB YOLLARI ---
 @app.route('/')
 def index():
     konular = Konu.query.order_by(Konu.sira).all()
@@ -409,89 +534,23 @@ def profil():
 def kurulum():
     db.create_all()
     return "Kurulum/Onarim Tamam."
-    # --- MOBİL GİRİŞ & KAYIT API (YENİ EKLENECEK KISIM) ---
 
-@app.route('/api/giris', methods=['POST'])
-def api_giris():
-    data = request.json
-    girdi = data.get('username')
-    sifre = data.get('password')
-
-    if not girdi or not sifre:
-        return jsonify({'durum': 'hata', 'mesaj': 'Eksik bilgi!'}), 400
-
-    user = User.query.filter((User.username == girdi) | (User.email == girdi)).first()
-    
-    if user and user.password and check_password_hash(user.password, sifre):
-        return jsonify({
-            'durum': 'basarili',
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-                'is_admin': user.is_admin
-            }
-        })
-    else:
-        return jsonify({'durum': 'hata', 'mesaj': 'Hatalı kullanıcı adı veya şifre!'}), 401
-
-@app.route('/api/kayit', methods=['POST'])
-def api_kayit():
-    data = request.json
-    kadi = data.get('username')
-    email = data.get('email')
-    sifre = data.get('password')
-
-    if not kadi or not email or not sifre:
-        return jsonify({'durum': 'hata', 'mesaj': 'Tüm alanları doldurun!'}), 400
-
-    if User.query.filter((User.username == kadi) | (User.email == email)).first():
-        return jsonify({'durum': 'hata', 'mesaj': 'Bu kullanıcı zaten kayıtlı!'}), 409
-
-    try:
-        hashed_pw = generate_password_hash(sifre, method='pbkdf2:sha256')
-        yeni_user = User(username=kadi, email=email, password=hashed_pw)
-        db.session.add(yeni_user)
-        db.session.commit()
-        
-        return jsonify({
-            'durum': 'basarili',
-            'user': {
-                'id': yeni_user.id,
-                'username': yeni_user.username,
-                'email': yeni_user.email,
-                'is_admin': yeni_user.is_admin
-            }
-        })
-    except Exception as e:
-        return jsonify({'durum': 'hata', 'mesaj': str(e)}), 500
-
-# ==========================================
-#     İÇERİK YÜKLEYİCİ
-# ==========================================
 @app.route('/icerik-yukle')
 def icerik_yukle():
-    rapor = [] 
     dosya_adi = 'yedek_icerik.json'
-    if not os.path.exists(dosya_adi):
-        return "<h1>❌ HATA: JSON Dosyası Yok!</h1>"
+    if not os.path.exists(dosya_adi): return "HATA: Dosya yok"
     try:
         with open(dosya_adi, 'r', encoding='utf-8') as f:
             konu_listesi = json.load(f)
         Konu.query.delete()
-        sayac = 0
         for data in konu_listesi:
-            yeni_konu = Konu(sira=data.get("sira", 0), baslik=data.get("baslik", "Başlıksız"), icerik=data.get("icerik", ""), resim=None)
-            db.session.add(yeni_konu)
-            sayac += 1
+            db.session.add(Konu(sira=data.get("sira", 0), baslik=data.get("baslik"), icerik=data.get("icerik"), resim=None))
         if not User.query.filter_by(username='admin').first():
-             yeni_admin = User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True)
-             db.session.add(yeni_admin)
+             db.session.add(User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True))
         db.session.commit()
-        return f"<h1>✅ {sayac} Konu Yüklendi!</h1>"
+        return "İçerik Yüklendi"
     except Exception as e:
-        db.session.rollback()
-        return f"<h1>❌ HATA: {str(e)}</h1>"
+        return f"HATA: {str(e)}"
 
 if __name__ == '__main__':
     app.run(debug=True)
