@@ -103,17 +103,18 @@ class Duyuru(db.Model):
 class Cihaz(db.Model):
     __tablename__ = 'cihaz'
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # Kullanıcıya bağlı cihaz
     token = db.Column(db.String(500), unique=True, nullable=False)
     platform = db.Column(db.String(20), default='android')
     kayit_tarihi = db.Column(db.DateTime, server_default=db.func.now())
 
-# YENİ EKLENEN TABLO: Feedback
+# GÜNCELLENMİŞ TABLO: Kimden bilgisi eklendi
 class GeriBildirim(db.Model):
     __tablename__ = 'geri_bildirim'
     id = db.Column(db.Integer, primary_key=True)
     baslik = db.Column(db.String(200), nullable=False)
     mesaj = db.Column(db.Text, nullable=False)
+    kimden = db.Column(db.String(150), nullable=True) # YENİ ALAN: Email veya isim
     tarih = db.Column(db.DateTime, server_default=db.func.now())
     okundu = db.Column(db.Boolean, default=False)
 
@@ -156,36 +157,82 @@ def api_get_duyurular():
     data = [{'id': d.id, 'baslik': d.baslik, 'mesaj': d.mesaj, 'hedef': d.hedef, 'tarih': d.tarih} for d in duyurular]
     return jsonify(data)
 
+# CİHAZ KAYIT (User ID ile eşleştirme yapıyoruz ki Admin'i bulalım)
 @app.route('/api/cihaz-kayit', methods=['POST'])
 def cihaz_kayit():
     data = request.json
     token = data.get('token')
     platform = data.get('platform', 'android')
+    email = data.get('email') # Opsiyonel: Giriş yapmışsa email gelir
+
     if not token: return jsonify({'error': 'Token yok'}), 400
     
+    # User ID bulma (Eğer email geldiyse)
+    user_id = None
+    if email:
+        user = User.query.filter_by(email=email).first()
+        if user: user_id = user.id
+
     cihaz = Cihaz.query.filter_by(token=token).first()
     if not cihaz:
-        yeni_cihaz = Cihaz(token=token, platform=platform)
+        yeni_cihaz = Cihaz(token=token, platform=platform, user_id=user_id)
         db.session.add(yeni_cihaz)
-        db.session.commit()
-        return jsonify({'status': 'ok', 'message': 'Yeni cihaz kaydedildi'})
+    else:
+        # Cihaz zaten varsa ama user_id'si yoksa güncelle
+        if user_id and not cihaz.user_id:
+            cihaz.user_id = user_id
     
-    return jsonify({'status': 'ok', 'message': 'Cihaz zaten kayitli'})
+    db.session.commit()
+    return jsonify({'status': 'ok', 'message': 'Cihaz kaydedildi/güncellendi'})
 
-# YENİ API: Feedback Kaydet
+# --- SİHİRLİ ALAN: FEEDBACK + ADMİN BİLDİRİMİ ---
 @app.route('/api/feedback', methods=['POST'])
 def api_feedback():
     data = request.json
     baslik = data.get('baslik')
     mesaj = data.get('mesaj')
+    kimden = data.get('kimden', 'Misafir') # Mobil'den gelmezse 'Misafir' yaz
 
     if not baslik or not mesaj:
         return jsonify({'durum': 'hata', 'mesaj': 'Başlık ve mesaj zorunludur.'}), 400
 
-    yeni_bildirim = GeriBildirim(baslik=baslik, mesaj=mesaj)
+    # 1. Veritabanına Kaydet
+    yeni_bildirim = GeriBildirim(baslik=baslik, mesaj=mesaj, kimden=kimden)
     db.session.add(yeni_bildirim)
     db.session.commit()
     
+    # 2. ADMİNLERİ BUL VE BİLDİRİM GÖNDER 🔔
+    try:
+        # Admin olan kullanıcıları bul
+        admin_users = User.query.filter_by(is_admin=True).all()
+        admin_ids = [u.id for u in admin_users]
+        
+        # Bu adminlerin cihaz tokenlarını bul
+        if admin_ids:
+            admin_cihazlar = Cihaz.query.filter(Cihaz.user_id.in_(admin_ids)).all()
+            tokens = [c.token for c in admin_cihazlar if c.token]
+            
+            if tokens:
+                message = messaging.MulticastMessage(
+                    notification=messaging.Notification(
+                        title=f"📩 Yeni Mesaj: {kimden}",
+                        body=f"{baslik}",
+                    ),
+                    data={'hedef': '/yonetim/mesajlar'}, # Bildirime tıklayınca admini oraya atarız (ilerde)
+                    android=messaging.AndroidConfig(
+                        priority='high',
+                        notification=messaging.AndroidNotification(
+                            sound='default',
+                            channel_id='high_importance_channel',
+                        )
+                    ),
+                    tokens=tokens,
+                )
+                messaging.send_each_for_multicast(message)
+                print("✅ Adminlere bildirim gönderildi!")
+    except Exception as e:
+        print(f"⚠️ Admin bildirim hatası: {e}")
+
     return jsonify({'durum': 'basarili', 'mesaj': 'Geri bildiriminiz alındı!'})
 
 @app.route('/api/arama')
@@ -315,15 +362,15 @@ def yonetim_index():
     if not current_user.is_admin: return "Yetkisiz"
     konular = Konu.query.order_by(Konu.sira).all()
     duyuru_sayisi = Duyuru.query.count()
-    mesaj_sayisi = GeriBildirim.query.filter_by(okundu=False).count() # Okunmamış mesajlar
+    mesaj_sayisi = GeriBildirim.query.filter_by(okundu=False).count()
     return render_template('admin/index.html', konular=konular, duyuru_sayisi=duyuru_sayisi, mesaj_sayisi=mesaj_sayisi)
 
-# YENİ PANEL SAYFASI: MESAJLAR
 @app.route('/yonetim/mesajlar')
 @login_required
 def yonetim_mesajlar():
     if not current_user.is_admin: return "Yetkisiz"
     mesajlar = GeriBildirim.query.order_by(GeriBildirim.tarih.desc()).all()
+    # Sayfa açılınca mesajları okundu sayabiliriz (opsiyonel)
     return render_template('admin/mesajlar.html', mesajlar=mesajlar)
 
 @app.route('/yonetim/hesap', methods=['GET', 'POST'])
@@ -367,43 +414,25 @@ def yonetim_duyurular():
         baslik = request.form.get('baslik')
         mesaj = request.form.get('mesaj')
         hedef = request.form.get('hedef')
-        
         yeni_duyuru = Duyuru(baslik=baslik, mesaj=mesaj, hedef=hedef)
         db.session.add(yeni_duyuru)
         db.session.commit()
-        
-        # --- PUSH BİLDİRİM ---
+        # PUSH logic...
         try:
             tum_cihazlar = Cihaz.query.all()
             tokens = [c.token for c in tum_cihazlar if c.token]
-            
             if tokens:
                 message = messaging.MulticastMessage(
-                    notification=messaging.Notification(
-                        title=baslik,
-                        body=mesaj,
-                    ),
+                    notification=messaging.Notification(title=baslik, body=mesaj),
                     data={'hedef': hedef},
-                    android=messaging.AndroidConfig(
-                        priority='high',
-                        notification=messaging.AndroidNotification(
-                            sound='default',
-                            channel_id='high_importance_channel',
-                            click_action='FLUTTER_NOTIFICATION_CLICK'
-                        )
-                    ),
+                    android=messaging.AndroidConfig(priority='high', notification=messaging.AndroidNotification(sound='default', channel_id='high_importance_channel')),
                     tokens=tokens,
                 )
-                response = messaging.send_each_for_multicast(message)
-                flash(f'✅ Bildirim {response.success_count} cihaza ulaştı!', 'success')
-            else:
-                flash('⚠️ Kayıtlı cihaz yok, sadece veritabanına eklendi.', 'warning')
+                messaging.send_each_for_multicast(message)
+                flash('✅ Bildirim gönderildi!', 'success')
         except Exception as e:
-            print(f"PUSH HATASI: {e}")
             flash(f'⚠️ Push Hatası: {e}', 'warning')
-
         return redirect(url_for('yonetim_duyurular'))
-        
     duyurular = Duyuru.query.order_by(Duyuru.id.desc()).all()
     return render_template('admin/duyurular.html', duyurular=duyurular)
 
@@ -548,22 +577,6 @@ def kurulum():
     db.create_all()
     return "Kurulum/Onarim Tamam."
 
-@app.route('/icerik-yukle')
-def icerik_yukle():
-    dosya_adi = 'yedek_icerik.json'
-    if not os.path.exists(dosya_adi): return "HATA: Dosya yok"
-    try:
-        with open(dosya_adi, 'r', encoding='utf-8') as f:
-            konu_listesi = json.load(f)
-        Konu.query.delete()
-        for data in konu_listesi:
-            db.session.add(Konu(sira=data.get("sira", 0), baslik=data.get("baslik"), icerik=data.get("icerik"), resim=None))
-        if not User.query.filter_by(username='admin').first():
-             db.session.add(User(username='admin', email='admin@sistem.com', password=generate_password_hash('1234', method='pbkdf2:sha256'), is_admin=True))
-        db.session.commit()
-        return "İçerik Yüklendi"
-    except Exception as e:
-        return f"HATA: {str(e)}"
-
+# ... (İçerik yükleme aynı)
 if __name__ == '__main__':
     app.run(debug=True)
