@@ -39,7 +39,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'giris_yap'
 
-# --- FIREBASE BAŞLATMA (ZIRHLI VERSİYON) ---
+# --- FIREBASE BAŞLATMA (Hata alırsa sunucuyu durdurma) ---
 firebase_aktif = False
 try:
     if not firebase_admin._apps:
@@ -121,7 +121,6 @@ class GeriBildirim(db.Model):
     tarih = db.Column(db.DateTime, server_default=db.func.now())
     okundu = db.Column(db.Boolean, default=False)
 
-# YENİ EKLENEN ROZET TABLOSU 🏅
 class UserBadge(db.Model):
     __tablename__ = 'user_badge'
     id = db.Column(db.Integer, primary_key=True)
@@ -261,7 +260,6 @@ def api_arama():
             sonuclar.append({'id': konu.id, 'baslik': konu.baslik, 'ozet': ozet, 'sira': konu.sira})
     return jsonify(sonuclar)
 
-# 👇 YENİ API: QUIZ BİTİR VE ROZET KAZAN 👇
 @app.route('/api/quiz-sonuc', methods=['POST'])
 def api_quiz_sonuc():
     data = request.json
@@ -301,10 +299,9 @@ def api_quiz_sonuc():
     
     return jsonify({
         'durum': 'basarili',
-        'yeni_rozetler': yeni_kazanilanlar # ['usta', 'cirak']
+        'yeni_rozetler': yeni_kazanilanlar 
     })
 
-# 👇 YENİ API: ROZETLERİMİ GETİR 👇
 @app.route('/api/rozetlerim', methods=['POST'])
 def api_rozetlerim():
     data = request.json
@@ -315,7 +312,6 @@ def api_rozetlerim():
     if not user: return jsonify([])
 
     badges = UserBadge.query.filter_by(user_id=user.id).all()
-    # Sadece kodları dönüyoruz, isim ve resim işini telefonda yapacağız
     return jsonify([b.badge_code for b in badges])
 
 @app.route('/api/kullanici-bilgi', methods=['POST'])
@@ -382,20 +378,38 @@ def api_kayit():
     except Exception as e:
         return jsonify({'durum': 'hata', 'mesaj': str(e)}), 500
 
+# --- YÖNETİM PANELİ (HATA KORUMALI) ---
 @app.route('/yonetim')
 @login_required
 def yonetim_index():
     if not current_user.is_admin: return "Yetkisiz"
-    konular = Konu.query.order_by(Konu.sira).all()
-    duyuru_sayisi = Duyuru.query.count()
-    mesaj_sayisi = GeriBildirim.query.filter_by(okundu=False).count()
+    
+    # Veritabanı hatalarına karşı korumalı sorgular
+    try:
+        konular = Konu.query.order_by(Konu.sira).all()
+    except:
+        konular = []
+    
+    try:
+        duyuru_sayisi = Duyuru.query.count()
+    except:
+        duyuru_sayisi = 0
+    
+    try:
+        mesaj_sayisi = GeriBildirim.query.filter_by(okundu=False).count()
+    except:
+        mesaj_sayisi = -1 # Hata olduğunu belirtmek için
+        
     return render_template('admin/index.html', konular=konular, duyuru_sayisi=duyuru_sayisi, mesaj_sayisi=mesaj_sayisi)
 
 @app.route('/yonetim/mesajlar')
 @login_required
 def yonetim_mesajlar():
     if not current_user.is_admin: return "Yetkisiz"
-    mesajlar = GeriBildirim.query.order_by(GeriBildirim.tarih.desc()).all()
+    try:
+        mesajlar = GeriBildirim.query.order_by(GeriBildirim.tarih.desc()).all()
+    except:
+        mesajlar = []
     return render_template('admin/mesajlar.html', mesajlar=mesajlar)
 
 @app.route('/yonetim/hesap', methods=['GET', 'POST'])
@@ -455,7 +469,11 @@ def yonetim_duyurular():
         else:
              flash('✅ Duyuru eklendi (Bildirim atlanıldı).', 'success')
         return redirect(url_for('yonetim_duyurular'))
-    duyurular = Duyuru.query.order_by(Duyuru.id.desc()).all()
+    
+    try:
+        duyurular = Duyuru.query.order_by(Duyuru.id.desc()).all()
+    except:
+        duyurular = []
     return render_template('admin/duyurular.html', duyurular=duyurular)
 
 @app.route('/yonetim/duyuru-sil/<int:id>')
@@ -500,7 +518,10 @@ def yonetim_duzenle(id):
 @app.route('/')
 def index():
     konular = Konu.query.order_by(Konu.sira).all()
-    duyurular = Duyuru.query.filter_by(aktif=True).order_by(Duyuru.id.desc()).limit(3).all()
+    try:
+        duyurular = Duyuru.query.filter_by(aktif=True).order_by(Duyuru.id.desc()).limit(3).all()
+    except:
+        duyurular = []
     return render_template('index.html', konular=konular, duyurular=duyurular)
 
 @app.route('/konu/<int:id>')
@@ -609,19 +630,18 @@ def icerik_yukle():
     except Exception as e:
         return f"HATA: {str(e)}"
 
-# --- KURULUM (GeriBildirim tablosunu düzeltmek ve Yeni UserBadge tablosunu eklemek için) ---
+# --- KURULUM / ONARIM (ZORLA SIFIRLAMA) ---
 @app.route('/kurulum-yap')
 def kurulum():
     try:
-        db.create_all()
-        # Rozet tablosu veya yeni sütunlar eklenmediyse diye create_all yeterli olur.
-        # Ama GeriBildirim tablosu hala sorun çıkarıyorsa bunu manuel temizlememiz gerekebilir.
-        # GeriBildirim tablosunu temizlemek için:
-        # GeriBildirim.__table__.drop(db.engine, checkfirst=True)
-        # db.create_all()
-        return "✅ Veritabanı (Rozetler ve GeriBildirim) TAMAM."
+        with app.app_context():
+            # Sorunlu tabloları kaldırıp yeniden oluşturur
+            GeriBildirim.__table__.drop(db.engine, checkfirst=True)
+            UserBadge.__table__.drop(db.engine, checkfirst=True)
+            db.create_all()
+        return "✅ KURULUM BAŞARILI! Tablolar sıfırlandı ve onarıldı."
     except Exception as e:
-        return f"HATA: {e}"
+        return f"HATA OLUŞTU: {e}"
 
 if __name__ == '__main__':
     app.run(debug=True)
