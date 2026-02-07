@@ -409,6 +409,62 @@ def profil():
 def kurulum():
     db.create_all()
     return "Kurulum/Onarim Tamam."
+    # --- MOBİL GİRİŞ & KAYIT API (YENİ EKLENECEK KISIM) ---
+
+@app.route('/api/giris', methods=['POST'])
+def api_giris():
+    data = request.json
+    girdi = data.get('username')
+    sifre = data.get('password')
+
+    if not girdi or not sifre:
+        return jsonify({'durum': 'hata', 'mesaj': 'Eksik bilgi!'}), 400
+
+    user = User.query.filter((User.username == girdi) | (User.email == girdi)).first()
+    
+    if user and user.password and check_password_hash(user.password, sifre):
+        return jsonify({
+            'durum': 'basarili',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'is_admin': user.is_admin
+            }
+        })
+    else:
+        return jsonify({'durum': 'hata', 'mesaj': 'Hatalı kullanıcı adı veya şifre!'}), 401
+
+@app.route('/api/kayit', methods=['POST'])
+def api_kayit():
+    data = request.json
+    kadi = data.get('username')
+    email = data.get('email')
+    sifre = data.get('password')
+
+    if not kadi or not email or not sifre:
+        return jsonify({'durum': 'hata', 'mesaj': 'Tüm alanları doldurun!'}), 400
+
+    if User.query.filter((User.username == kadi) | (User.email == email)).first():
+        return jsonify({'durum': 'hata', 'mesaj': 'Bu kullanıcı zaten kayıtlı!'}), 409
+
+    try:
+        hashed_pw = generate_password_hash(sifre, method='pbkdf2:sha256')
+        yeni_user = User(username=kadi, email=email, password=hashed_pw)
+        db.session.add(yeni_user)
+        db.session.commit()
+        
+        return jsonify({
+            'durum': 'basarili',
+            'user': {
+                'id': yeni_user.id,
+                'username': yeni_user.username,
+                'email': yeni_user.email,
+                'is_admin': yeni_user.is_admin
+            }
+        })
+    except Exception as e:
+        return jsonify({'durum': 'hata', 'mesaj': str(e)}), 500
 
 # ==========================================
 #     İÇERİK YÜKLEYİCİ
