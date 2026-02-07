@@ -39,7 +39,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'giris_yap'
 
-# --- FIREBASE BAŞLATMA (Hata alırsa sunucuyu durdurma, sadece pas geç) ---
+# --- FIREBASE BAŞLATMA (ZIRHLI VERSİYON) ---
 firebase_aktif = False
 try:
     if not firebase_admin._apps:
@@ -121,6 +121,14 @@ class GeriBildirim(db.Model):
     tarih = db.Column(db.DateTime, server_default=db.func.now())
     okundu = db.Column(db.Boolean, default=False)
 
+# YENİ EKLENEN ROZET TABLOSU 🏅
+class UserBadge(db.Model):
+    __tablename__ = 'user_badge'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    badge_code = db.Column(db.String(50), nullable=False) # 'cirak', 'usta', 'basarili'
+    earned_at = db.Column(db.DateTime, server_default=db.func.now())
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -185,7 +193,6 @@ def cihaz_kayit():
     db.session.commit()
     return jsonify({'status': 'ok', 'message': 'Cihaz kaydedildi/güncellendi'})
 
-# --- 👇 BURASI DÜZELTİLDİ: ZIRHLI FEEDBACK 👇 ---
 @app.route('/api/feedback', methods=['POST'])
 def api_feedback():
     try:
@@ -197,12 +204,12 @@ def api_feedback():
         if not baslik or not mesaj:
             return jsonify({'durum': 'hata', 'mesaj': 'Başlık ve mesaj zorunludur.'}), 400
 
-        # 1. ÖNCE KAYDET (Bu kısım hatasız çalışır)
+        # 1. ÖNCE KAYDET
         yeni_bildirim = GeriBildirim(baslik=baslik, mesaj=mesaj, kimden=kimden)
         db.session.add(yeni_bildirim)
         db.session.commit()
         
-        # 2. BİLDİRİM GÖNDERMEYİ DENE (Hata verirse yut, sisteme çaktırma)
+        # 2. BİLDİRİM GÖNDERMEYİ DENE (Zırhlı)
         if firebase_aktif:
             try:
                 admin_users = User.query.filter_by(is_admin=True).all()
@@ -228,13 +235,11 @@ def api_feedback():
         else:
             print("⚠️ Firebase aktif değil, bildirim atlanıyor.")
 
-        # HER DURUMDA BAŞARILI DÖN
         return jsonify({'durum': 'basarili', 'mesaj': 'Geri bildiriminiz alındı!'})
     
     except Exception as e:
         print(f"🔥 KRİTİK VERİTABANI HATASI: {e}")
         return jsonify({'durum': 'hata', 'mesaj': f'Sunucu Hatası: {str(e)}'}), 500
-# ----------------------------------------------------
 
 @app.route('/api/arama')
 def api_arama():
@@ -255,6 +260,63 @@ def api_arama():
             else: ozet = temiz_metin[:150] + "..."
             sonuclar.append({'id': konu.id, 'baslik': konu.baslik, 'ozet': ozet, 'sira': konu.sira})
     return jsonify(sonuclar)
+
+# 👇 YENİ API: QUIZ BİTİR VE ROZET KAZAN 👇
+@app.route('/api/quiz-sonuc', methods=['POST'])
+def api_quiz_sonuc():
+    data = request.json
+    email = data.get('email')
+    puan = data.get('puan') # 0 - 100 arası
+
+    if not email:
+        return jsonify({'durum': 'ok', 'yeni_rozetler': []}) # Misafir ise rozet yok
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'durum': 'hata', 'mesaj': 'Kullanıcı yok'})
+
+    yeni_kazanilanlar = []
+
+    # 1. Rozet: "Çırak" (İlk Quizini bitiren herkese)
+    badge_cirak = UserBadge.query.filter_by(user_id=user.id, badge_code='cirak').first()
+    if not badge_cirak:
+        db.session.add(UserBadge(user_id=user.id, badge_code='cirak'))
+        yeni_kazanilanlar.append('cirak')
+
+    # 2. Rozet: "Kusursuz" (100 Puan alanlara)
+    if puan == 100:
+        badge_usta = UserBadge.query.filter_by(user_id=user.id, badge_code='usta').first()
+        if not badge_usta:
+            db.session.add(UserBadge(user_id=user.id, badge_code='usta'))
+            yeni_kazanilanlar.append('usta')
+
+    # 3. Rozet: "Başarılı" (80 ve üzeri alanlara)
+    if puan >= 80:
+        badge_basarili = UserBadge.query.filter_by(user_id=user.id, badge_code='basarili').first()
+        if not badge_basarili:
+            db.session.add(UserBadge(user_id=user.id, badge_code='basarili'))
+            yeni_kazanilanlar.append('basarili')
+
+    db.session.commit()
+    
+    return jsonify({
+        'durum': 'basarili',
+        'yeni_rozetler': yeni_kazanilanlar # ['usta', 'cirak']
+    })
+
+# 👇 YENİ API: ROZETLERİMİ GETİR 👇
+@app.route('/api/rozetlerim', methods=['POST'])
+def api_rozetlerim():
+    data = request.json
+    email = data.get('email')
+    if not email: return jsonify([])
+    
+    user = User.query.filter_by(email=email).first()
+    if not user: return jsonify([])
+
+    badges = UserBadge.query.filter_by(user_id=user.id).all()
+    # Sadece kodları dönüyoruz, isim ve resim işini telefonda yapacağız
+    return jsonify([b.badge_code for b in badges])
 
 @app.route('/api/kullanici-bilgi', methods=['POST'])
 def api_kullanici_bilgi():
@@ -530,14 +592,6 @@ def cikis_yap():
 def profil():
     return render_template('profile.html', user=current_user)
 
-@app.route('/kurulum-yap')
-def kurulum():
-    try:
-        db.create_all()
-        return "Kurulum/Onarim Tamam."
-    except Exception as e:
-        return f"HATA: {e}"
-
 @app.route('/icerik-yukle')
 def icerik_yukle():
     dosya_adi = 'yedek_icerik.json'
@@ -554,6 +608,20 @@ def icerik_yukle():
         return "İçerik Yüklendi"
     except Exception as e:
         return f"HATA: {str(e)}"
+
+# --- KURULUM (GeriBildirim tablosunu düzeltmek ve Yeni UserBadge tablosunu eklemek için) ---
+@app.route('/kurulum-yap')
+def kurulum():
+    try:
+        db.create_all()
+        # Rozet tablosu veya yeni sütunlar eklenmediyse diye create_all yeterli olur.
+        # Ama GeriBildirim tablosu hala sorun çıkarıyorsa bunu manuel temizlememiz gerekebilir.
+        # GeriBildirim tablosunu temizlemek için:
+        # GeriBildirim.__table__.drop(db.engine, checkfirst=True)
+        # db.create_all()
+        return "✅ Veritabanı (Rozetler ve GeriBildirim) TAMAM."
+    except Exception as e:
+        return f"HATA: {e}"
 
 if __name__ == '__main__':
     app.run(debug=True)
