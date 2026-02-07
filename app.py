@@ -1,19 +1,3 @@
-<meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="high_importance_channel" />
-        </application> 
-    ```
-
----
-
-### 🛠️ 2. HAMLE: Sunucuyu Güncelle (`app.py`) 🌍
-
-Şimdi sunucuya diyeceğiz ki: "Mesajı gönderirken üzerine 'Bu Yüksek Öncelikli Kanal İçindir' diye not düş."
-
-Mevcut `app.py` dosyanı tamamen sil ve **bu GÜNCELLENMİŞ TAM HALİ** yapıştır.
-*(Tek fark: `channel_id='high_importance_channel'` satırını ekledim.)*
-
-```python
 import os
 import re
 import json
