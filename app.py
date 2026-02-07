@@ -10,7 +10,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 
-# --- FIREBASE ADMIN SDK ---
+# --- FIREBASE KÜTÜPHANESİ ---
 import firebase_admin
 from firebase_admin import credentials, messaging
 
@@ -42,7 +42,6 @@ login_manager.login_view = 'giris_yap'
 # --- FIREBASE BAŞLATMA ---
 try:
     if not firebase_admin._apps:
-        # Render'da "Secret File" olarak tanımlı dosya
         if os.path.exists("serviceAccountKey.json"):
             cred = credentials.Certificate("serviceAccountKey.json")
             firebase_admin.initialize_app(cred)
@@ -109,6 +108,15 @@ class Cihaz(db.Model):
     platform = db.Column(db.String(20), default='android')
     kayit_tarihi = db.Column(db.DateTime, server_default=db.func.now())
 
+# YENİ EKLENEN TABLO: Feedback
+class GeriBildirim(db.Model):
+    __tablename__ = 'geri_bildirim'
+    id = db.Column(db.Integer, primary_key=True)
+    baslik = db.Column(db.String(200), nullable=False)
+    mesaj = db.Column(db.Text, nullable=False)
+    tarih = db.Column(db.DateTime, server_default=db.func.now())
+    okundu = db.Column(db.Boolean, default=False)
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -163,6 +171,22 @@ def cihaz_kayit():
         return jsonify({'status': 'ok', 'message': 'Yeni cihaz kaydedildi'})
     
     return jsonify({'status': 'ok', 'message': 'Cihaz zaten kayitli'})
+
+# YENİ API: Feedback Kaydet
+@app.route('/api/feedback', methods=['POST'])
+def api_feedback():
+    data = request.json
+    baslik = data.get('baslik')
+    mesaj = data.get('mesaj')
+
+    if not baslik or not mesaj:
+        return jsonify({'durum': 'hata', 'mesaj': 'Başlık ve mesaj zorunludur.'}), 400
+
+    yeni_bildirim = GeriBildirim(baslik=baslik, mesaj=mesaj)
+    db.session.add(yeni_bildirim)
+    db.session.commit()
+    
+    return jsonify({'durum': 'basarili', 'mesaj': 'Geri bildiriminiz alındı!'})
 
 @app.route('/api/arama')
 def api_arama():
@@ -291,7 +315,16 @@ def yonetim_index():
     if not current_user.is_admin: return "Yetkisiz"
     konular = Konu.query.order_by(Konu.sira).all()
     duyuru_sayisi = Duyuru.query.count()
-    return render_template('admin/index.html', konular=konular, duyuru_sayisi=duyuru_sayisi)
+    mesaj_sayisi = GeriBildirim.query.filter_by(okundu=False).count() # Okunmamış mesajlar
+    return render_template('admin/index.html', konular=konular, duyuru_sayisi=duyuru_sayisi, mesaj_sayisi=mesaj_sayisi)
+
+# YENİ PANEL SAYFASI: MESAJLAR
+@app.route('/yonetim/mesajlar')
+@login_required
+def yonetim_mesajlar():
+    if not current_user.is_admin: return "Yetkisiz"
+    mesajlar = GeriBildirim.query.order_by(GeriBildirim.tarih.desc()).all()
+    return render_template('admin/mesajlar.html', mesajlar=mesajlar)
 
 @app.route('/yonetim/hesap', methods=['GET', 'POST'])
 @login_required
@@ -339,7 +372,7 @@ def yonetim_duyurular():
         db.session.add(yeni_duyuru)
         db.session.commit()
         
-        # --- PUSH BİLDİRİM (DÜZELTİLDİ: KANAL ID EKLENDİ) ---
+        # --- PUSH BİLDİRİM ---
         try:
             tum_cihazlar = Cihaz.query.all()
             tokens = [c.token for c in tum_cihazlar if c.token]
@@ -351,18 +384,14 @@ def yonetim_duyurular():
                         body=mesaj,
                     ),
                     data={'hedef': hedef},
-                    
-                    # 👇 BURASI ÇOK ÖNEMLİ: ANDROID KANALI TANIMLANDI 👇
                     android=messaging.AndroidConfig(
                         priority='high',
                         notification=messaging.AndroidNotification(
                             sound='default',
-                            channel_id='high_importance_channel', # ARTIK TELEFON KANALI BİLİYOR
+                            channel_id='high_importance_channel',
                             click_action='FLUTTER_NOTIFICATION_CLICK'
                         )
                     ),
-                    # ------------------------------------------------
-                    
                     tokens=tokens,
                 )
                 response = messaging.send_each_for_multicast(message)
